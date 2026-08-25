@@ -1087,7 +1087,9 @@ function saveEf(){
   const hora=document.getElementById('ef_hora').value;
   // Color por defecto según tipo
   const defColor={efemeride:efCI,evento:3,reunion:4};
-  D.efemerides[efDate].push({text:tx,color:curAgType==='efemeride'?efCI:defColor[curAgType],tipo:curAgType,hora:hora||null});
+  const item={text:tx,color:curAgType==='efemeride'?efCI:defColor[curAgType],tipo:curAgType,hora:hora||null};
+  D.efemerides[efDate].push(item);
+  sbSaveCalendarItem(efDate,item);
   sd();closeM('efBg');renderAgenda();
 }
 function delEf(ds,idx,e){e.stopPropagation();const item=D.efemerides[ds][idx];const sbId=item?.id;D.efemerides[ds].splice(idx,1);if(!D.efemerides[ds].length)delete D.efemerides[ds];if(sbId)sbDelCalendarItem(sbId);sd();renderAgenda();}
@@ -1142,7 +1144,7 @@ function saveTask(){
   const cols=[...document.querySelectorAll('#t_cols .chip.on')].map(c=>c.dataset.id);
   const task={id:eTId||uid(),titulo:tit,tipo,categoria:cat,cliente:document.getElementById('t_cli').value.trim(),fecha:document.getElementById('t_fec').value,horaInicio:document.getElementById('t_hi').value,horaFin:document.getElementById('t_hf').value,colaboradores:cols,estado:document.getElementById('t_est').value,notas:document.getElementById('t_not').value.trim()};
   if(eTId)D.tareas=D.tareas.map(t=>t.id===eTId?task:t);else D.tareas.push(task);
-  sd();closeM('taskBg');renderSemana();renderCWk();
+  sd();sbSaveTask(task);closeM('taskBg');renderSemana();renderCWk();
   if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
 }
 function delTask(){if(!confirm('¿Eliminar tarea?'))return;const tId=eTId;D.tareas=D.tareas.filter(t=>t.id!==tId);sd();sbDelTask(tId);closeM('taskBg');renderSemana();renderCWk();}
@@ -1438,7 +1440,9 @@ function sendPortalComm(pid){
   const p=D.pendientes.find(x=>x.id===pid);if(!p)return;
   if(!p.comentarios)p.comentarios=[];
   const cl=D.clientes.find(c=>c.id===_portalClientId);
-  p.comentarios.push({text:tx,autor:cl?.nombre||'Cliente',fecha:fmtD(new Date())});
+  const nuevoComm={text:tx,autor:cl?.nombre||'Cliente',fecha:fmtD(new Date())};
+  p.comentarios.push(nuevoComm);
+  sbSaveComment('job',pid,nuevoComm,'client');
   sd();renderPortalClient(_portalClientId);
 }
 function addPnwLink(label='',url=''){
@@ -1453,7 +1457,9 @@ function getPnwLinks(){
 function submitNewWork(){
   const desc=document.getElementById('pnw_desc').value.trim();if(!desc){alert('Describí lo que necesitás.');return;}
   const links=getPnwLinks();
-  D.pendientes.push({id:uid(),clienteId:_portalClientId,desc,estado:'proceso',prioridad:gP('pnw_pri')||'bajo',obs:document.getElementById('pnw_obs').value.trim(),links,comentarios:[],fecha:fmtD(new Date())});
+  const nuevoJob={id:uid(),clienteId:_portalClientId,desc,estado:'proceso',prioridad:gP('pnw_pri')||'bajo',obs:document.getElementById('pnw_obs').value.trim(),links,comentarios:[],fecha:fmtD(new Date())};
+  D.pendientes.push(nuevoJob);
+  sbSaveJob(nuevoJob);
   sd();
   document.getElementById('pnw_desc').value='';
   document.getElementById('pnw_obs').value='';
