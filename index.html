@@ -583,7 +583,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
     <h2 id="cobTitle">Nueva cobertura</h2>
     <div class="grid2">
       <div class="field"><label>Fecha</label><input id="cb_fec" type="date"></div>
-      <div class="field"><label>Cliente</label><input id="cb_cli" list="cDL2" placeholder="Nombre del cliente"><datalist id="cDL2"></datalist></div>
+      <div class="field"><label>Cliente</label><select id="cb_cli"><option value="">— Seleccioná un cliente —</option></select></div>
     </div>
     <div class="field"><label>Evento / descripción</label><input id="cb_evt" placeholder="Ej: Lanzamiento de producto, shooting…"></div>
     <div class="field"><label>Ubicación</label><input id="cb_ubi" placeholder="Dirección o lugar"></div>
@@ -739,7 +739,7 @@ async function loadFromSupabase(){
       const links=(attData||[]).filter(a=>a.entity_id===j.id).map(a=>({label:a.label||'',url:a.url||''}));
       const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:c.created_at.slice(0,10),_sbId:c.id}));
       const desc=j.descripcion?j.titulo+'\n'+j.descripcion:j.titulo;
-      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,fecha:j.created_at?.slice(0,10)||fmtD(new Date())};
+      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,createdBy:j.created_by||null,fecha:j.created_at?.slice(0,10)||fmtD(new Date())};
     });
 
     D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
@@ -798,7 +798,9 @@ function sbDelClient(id){sbDel('clients',id);}
 
 function sbSaveJob(job){
   const lines=job.desc.split('\n');
-  sbSave('jobs',{id:job.id,client_id:job.clienteId,titulo:lines[0],descripcion:lines.slice(1).join('\n')||null,estado:job.estado,prioridad:job.prioridad,observacion:job.obs||null});
+  const row={id:job.id,client_id:job.clienteId,titulo:lines[0],descripcion:lines.slice(1).join('\n')||null,estado:job.estado,prioridad:job.prioridad,observacion:job.obs||null};
+  if(job.createdBy)row.created_by=job.createdBy;
+  sbSave('jobs',row);
   sbDelWhere('attachments','entity_id',job.id);
   if(job.links&&job.links.length){
     sbc.from('attachments').insert(job.links.map((l,i)=>({entity_type:'job',entity_id:job.id,type:'link',label:l.label,url:l.url,uploaded_by_type:'admin',orden:i})));
@@ -829,9 +831,9 @@ async function sbSaveCalendarItem(dateStr,item){
 function sbDelCalendarItem(itemId){sbDel('calendar_items',itemId);}
 
 function sbSaveCoverage(cov){
-  const cli=D.clientes.find(c=>c.nombre===cov.cliente);
   const parts=(cov.horario||'').split(' – ');
-  sbSave('coverages',{id:cov.id,client_id:cov.clienteId||cli?.id||null,evento:cov.evento,ubicacion:cov.ubicacion||null,fecha:cov.fecha,hora_inicio:parts[0]||null,hora_fin:parts[1]||null,costo_traslado_ida:cov.costoIda||0,costo_traslado_vuelta:cov.costoVuelta||0});
+  if(!cov.clienteId){toast('⚠️ La cobertura necesita un cliente');return;}
+  sbSave('coverages',{id:cov.id,client_id:cov.clienteId,evento:cov.evento,ubicacion:cov.ubicacion||null,fecha:cov.fecha,hora_inicio:parts[0]||null,hora_fin:parts[1]||null,costo_traslado_ida:cov.costoIda||0,costo_traslado_vuelta:cov.costoVuelta||0});
   sbDelWhere('coverage_assignments','coverage_id',cov.id);
   if(cov.colaboradores&&cov.colaboradores.length){
     sbc.from('coverage_assignments').insert(cov.colaboradores.map(uid=>({coverage_id:cov.id,user_id:uid,self_assigned:false})));
@@ -901,7 +903,8 @@ async function pv(){
       subscribeRealtime();
       return;
     }
-    const{data:usr}=await sbc.from('users').select('*').eq('pin_hash',pb).eq('is_active',true).maybeSingle();
+    const{data:usrList}=await sbc.from('users').select('*').eq('pin_hash',pb).eq('is_active',true).limit(1);
+    const usr=usrList&&usrList.length?usrList[0]:null;
     if(usr){
       await loadFromSupabase();
       showLoading(false);
@@ -1168,7 +1171,12 @@ function piHTML(p,num){
   const linksHtml=(p.links&&p.links.length)
     ?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${p.links.map(l=>`<a class="pi-link" href="${esc(l.url)}" target="_blank">🔗 ${esc(l.label||'Link')}</a>`).join('')}</div>`
     :(p.link?`<a class="pi-link" href="${esc(p.link)}" target="_blank">📂 Ver archivo</a>`:'');
-  return`<div class="pi"><div class="pi-top"><div class="pi-num">${num}</div><div class="pi-body"><div class="pi-title">${esc(p.desc)}</div><div class="pi-badges">${stTag(p.estado)}${prTag(p.prioridad)}</div>${p.obs?`<div class="pi-obs">${esc(p.obs)}</div>`:''}${linksHtml}</div>${ST.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="openPendModal(null,'${p.id}')">Editar</button>`:''}</div>${comms.length?`<div class="pi-comms">${comms.map(c=>`<div class="pi-comm"><div class="pi-comm-meta">${esc(c.autor)} · ${c.fecha}</div>${esc(c.text)}</div>`).join('')}</div>`:''}<div class="pi-actions"><button class="btn btn-ghost btn-sm" onclick="openComm('${p.id}')">💬 Comentar</button></div></div>`;
+  let creador='';
+  if(ST.role==='admin'&&p.createdBy){
+    const cr=D.colaboradores.find(x=>x.id===p.createdBy);
+    if(cr)creador=`<div style="font-size:10.5px;color:var(--gris2);font-weight:700;margin-top:4px;">👤 Creado por ${esc(cr.nombre)}</div>`;
+  }
+  return`<div class="pi"><div class="pi-top"><div class="pi-num">${num}</div><div class="pi-body"><div class="pi-title">${esc(p.desc)}</div><div class="pi-badges">${stTag(p.estado)}${prTag(p.prioridad)}</div>${p.obs?`<div class="pi-obs">${esc(p.obs)}</div>`:''}${linksHtml}${creador}</div>${ST.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="openPendModal(null,'${p.id}')">Editar</button>`:''}</div>${comms.length?`<div class="pi-comms">${comms.map(c=>`<div class="pi-comm"><div class="pi-comm-meta">${esc(c.autor)} · ${c.fecha}</div>${esc(c.text)}</div>`).join('')}</div>`:''}<div class="pi-actions"><button class="btn btn-ghost btn-sm" onclick="openComm('${p.id}')">💬 Comentar</button></div></div>`;
 }
 const AGENCY_COLORS=[
   {hex:'#f7dd7d',name:'Amarillo'},
@@ -1269,7 +1277,7 @@ function openPendModal(cid,pid){
 function savePend(){
   const desc=document.getElementById('pm_desc').value.trim();if(!desc){alert('Escribí la descripción.');return;}
   const pid=document.getElementById('pm_id').value;
-  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),comentarios:pid?(D.pendientes.find(x=>x.id===pid)?.comentarios||[]):[],fecha:fmtD(new Date())};
+  const existing=pid?D.pendientes.find(x=>x.id===pid):null;const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),fecha:existing?.fecha||fmtD(new Date())};
   if(pid)D.pendientes=D.pendientes.map(p=>p.id===pid?obj:p);else D.pendientes.push(obj);
   sd();sbSaveJob(obj);closeM('pendBg');renderPend();
 }
@@ -1295,7 +1303,7 @@ function renderReporte(){
 
 /* ═══ COBERTURAS ═══ */
 function renderCob(){
-  document.getElementById('cDL2').innerHTML=[...new Set([...D.clientes.map(c=>c.nombre),...getClis()])].map(n=>`<option value="${esc(n)}">`).join('');
+  document.getElementById('cb_cli').innerHTML='<option value="">— Seleccioná un cliente —</option>'+D.clientes.map(c=>`<option value="${c.id}">${esc(c.emoji?c.emoji+' ':'')}${esc(c.nombre)}</option>`).join('');
   const sorted=[...D.coberturas].sort((a,b)=>a.fecha.localeCompare(b.fecha));
   document.getElementById('cobBody').innerHTML=sorted.length?sorted.map(c=>{
     const cols=c.colaboradores||[];
@@ -1308,21 +1316,24 @@ function renderCob(){
 function toggleMe(cobId){const cob=D.coberturas.find(c=>c.id===cobId);if(!cob)return;if(!cob.colaboradores)cob.colaboradores=[];const idx=cob.colaboradores.indexOf(ST.cid);const adding=idx<0;if(adding)cob.colaboradores.push(ST.cid);else cob.colaboradores.splice(idx,1);sd();sbToggleCovAss(cobId,ST.cid,adding);renderCob();toast(adding?'✓ Te anotaste en la cobertura':'Te diste de baja de la cobertura');}
 function openCobModal(id){
   eCobId=id||null;
+  document.getElementById('cb_cli').innerHTML='<option value="">— Seleccioná un cliente —</option>'+D.clientes.map(c=>`<option value="${c.id}">${esc(c.emoji?c.emoji+' ':'')}${esc(c.nombre)}</option>`).join('');
   document.getElementById('cobTitle').textContent=id?'Editar cobertura':'Nueva cobertura';
   document.getElementById('cobDel').style.display=id&&ST.role==='admin'?'inline-flex':'none';
   const w=document.getElementById('cb_cols');
   w.innerHTML=D.colaboradores.map(c=>`<div class="chip" data-id="${c.id}">${esc(c.nombre)}</div>`).join('');
   w.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>ch.classList.toggle('on')));
   document.getElementById('cobColsF').style.display=ST.role==='admin'?'block':'none';
-  if(id){const c=D.coberturas.find(x=>x.id===id);document.getElementById('cb_fec').value=c.fecha;document.getElementById('cb_cli').value=c.cliente;document.getElementById('cb_evt').value=c.evento;document.getElementById('cb_ubi').value=c.ubicacion||'';document.getElementById('cb_hor').value=c.horario||'';document.getElementById('cb_ida').value=c.costoIda||'';document.getElementById('cb_vta').value=c.costoVuelta||'';(c.colaboradores||[]).forEach(cid=>{const el=w.querySelector(`[data-id="${cid}"]`);if(el)el.classList.add('on');});}
-  else{['cb_cli','cb_evt','cb_ubi','cb_hor'].forEach(i=>document.getElementById(i).value='');['cb_ida','cb_vta'].forEach(i=>document.getElementById(i).value='');document.getElementById('cb_fec').value=fmtD(new Date());}
+  if(id){const c=D.coberturas.find(x=>x.id===id);document.getElementById('cb_fec').value=c.fecha;document.getElementById('cb_cli').value=c.clienteId||'';document.getElementById('cb_evt').value=c.evento;document.getElementById('cb_ubi').value=c.ubicacion||'';document.getElementById('cb_hor').value=c.horario||'';document.getElementById('cb_ida').value=c.costoIda||'';document.getElementById('cb_vta').value=c.costoVuelta||'';(c.colaboradores||[]).forEach(cid=>{const el=w.querySelector(`[data-id="${cid}"]`);if(el)el.classList.add('on');});}
+  else{['cb_evt','cb_ubi','cb_hor'].forEach(i=>document.getElementById(i).value='');document.getElementById('cb_cli').value='';['cb_ida','cb_vta'].forEach(i=>document.getElementById(i).value='');document.getElementById('cb_fec').value=fmtD(new Date());}
   document.getElementById('cobBg').classList.add('open');
 }
 function saveCob(){
-  const cli=document.getElementById('cb_cli').value.trim(),evt=document.getElementById('cb_evt').value.trim();
-  if(!cli||!evt){alert('Completá cliente y evento.');return;}
+  const cliId=document.getElementById('cb_cli').value,evt=document.getElementById('cb_evt').value.trim();
+  if(!cliId){alert('Seleccioná un cliente de la lista.');return;}
+  if(!evt){alert('Completá el evento.');return;}
+  const cliObj=D.clientes.find(c=>c.id===cliId);
   const cols=ST.role==='admin'?[...document.querySelectorAll('#cb_cols .chip.on')].map(c=>c.dataset.id):[];
-  const cob={id:eCobId||uid(),fecha:document.getElementById('cb_fec').value,cliente:cli,evento:evt,ubicacion:document.getElementById('cb_ubi').value.trim(),horario:document.getElementById('cb_hor').value.trim(),costoIda:Number(document.getElementById('cb_ida').value)||0,costoVuelta:Number(document.getElementById('cb_vta').value)||0,colaboradores:cols};
+  const cob={id:eCobId||uid(),fecha:document.getElementById('cb_fec').value,cliente:cliObj?.nombre||'',clienteId:cliId,evento:evt,ubicacion:document.getElementById('cb_ubi').value.trim(),horario:document.getElementById('cb_hor').value.trim(),costoIda:Number(document.getElementById('cb_ida').value)||0,costoVuelta:Number(document.getElementById('cb_vta').value)||0,colaboradores:cols};
   if(ST.role==='colab'&&!cob.colaboradores.includes(ST.cid))cob.colaboradores.push(ST.cid);
   if(eCobId)D.coberturas=D.coberturas.map(c=>c.id===eCobId?cob:c);else D.coberturas.push(cob);
   sd();sbSaveCoverage(cob);closeM('cobBg');renderCob();
@@ -1457,7 +1468,7 @@ function getPnwLinks(){
 function submitNewWork(){
   const desc=document.getElementById('pnw_desc').value.trim();if(!desc){alert('Describí lo que necesitás.');return;}
   const links=getPnwLinks();
-  const nuevoJob={id:uid(),clienteId:_portalClientId,desc,estado:'proceso',prioridad:gP('pnw_pri')||'bajo',obs:document.getElementById('pnw_obs').value.trim(),links,comentarios:[],fecha:fmtD(new Date())};
+  const nuevoJob={id:uid(),clienteId:_portalClientId,desc,estado:'proceso',prioridad:gP('pnw_pri')||'bajo',obs:document.getElementById('pnw_obs').value.trim(),links,comentarios:[],createdBy:null,createdByClient:true,fecha:fmtD(new Date())};
   D.pendientes.push(nuevoJob);
   sbSaveJob(nuevoJob);
   sd();
