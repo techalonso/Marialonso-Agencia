@@ -845,7 +845,7 @@ function sbToggleCovAss(covId,userId,adding){
 }
 
 function sbSaveUser(u){sbSave('users',{id:u.id,nombre:u.nombre,pin_hash:u.pin,rol:'collaborator',is_active:true});}
-function sbDelUser(id){if(!sbc)return;sbc.from('users').update({is_active:false}).eq('id',id);}
+function sbDelUser(id){if(!sbc)return;sbc.from('users').delete().eq('id',id).then(({error})=>{if(error)console.error('sbDelUser error',error);});}
 function sbSaveAdminPin(pin){sbSave('config',{clave:'admin_pin',valor:pin});}
 
 function subscribeRealtime(){
