@@ -1203,11 +1203,27 @@ function mkPendChip(p){const cli=D.clientes.find(x=>x.id===p.clienteId);const ti
 function renderCWk(){
   const days=[];for(let i=0;i<6;i++){const d=new Date(cwS);d.setDate(d.getDate()+i);days.push(fmtD(d));}
   document.getElementById('colabWkGrid').innerHTML=D.colaboradores.map(col=>{
+    // Tareas asignadas a este colaborador esta semana
     const tt=D.tareas.filter(t=>t.colaboradores.includes(col.id)&&days.includes(t.fecha));
+    // Trabajos (Pendientes 360) a cargo de este colaborador con entrega esta semana
+    const pp=D.pendientes.filter(p=>{
+      if(!(p.colaboradores||[]).includes(col.id))return false;
+      if(p.estado==='finalizado')return false; // no mostrar los ya finalizados
+      // Mostrar si: tiene entrega esta semana, O no tiene fecha pero está activo
+      if(p.fechaEntrega)return days.includes(p.fechaEntrega);
+      return true; // sin fecha de entrega pero activo y a cargo
+    });
     let h=0,ex=0;tt.forEach(t=>{const c=cH(t.fecha,t.horaInicio,t.horaFin);h+=c.total;ex+=c.extra;});
-    return`<div class="colab-card"><div class="cc-name">${esc(col.nombre)}</div><div class="cc-stats">${tt.length} tarea${tt.length!==1?'s':''} · ${r1(h)}h${ex>0?` · <span style="color:var(--rojo)">${r1(ex)}h extra</span>`:''}</div>${tt.length?tt.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(t=>{const c=cH(t.fecha,t.horaInicio,t.horaFin);return`<div class="cc-task${c.extra>0?' xtra':''}"><div class="cc-title">${esc(t.titulo)}</div><div class="cc-meta">${t.fecha.slice(8)} · ${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}</div></div>`;}).join(''):'<div class="no-t">Sin tareas esta semana</div>'}</div>`;
+    const totalItems=tt.length+pp.length;
+    // Render tareas
+    const tareasHtml=tt.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(t=>{const c=cH(t.fecha,t.horaInicio,t.horaFin);return`<div class="cc-task${c.extra>0?' xtra':''}"><div class="cc-title">${esc(t.titulo)}</div><div class="cc-meta">${t.fecha.slice(8)} · ${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}</div></div>`;}).join('');
+    // Render trabajos/pendientes (con estilo rosa para distinguir)
+    const pendHtml=pp.sort((a,b)=>(a.fechaEntrega||'9999').localeCompare(b.fechaEntrega||'9999')).map(p=>{const cli=D.clientes.find(x=>x.id===p.clienteId);const titulo=p.desc.split('\n')[0];const entregaTxt=p.fechaEntrega?`Entrega ${p.fechaEntrega.slice(8)}`:'Sin fecha';return`<div class="cc-task" style="border-left-color:var(--rosa2);background:#fdeef0;"><div class="cc-title">📌 ${esc(titulo)}</div><div class="cc-meta">${entregaTxt}${cli?' · '+esc(cli.nombre):''} · ${esc(estadoLabel(p.estado))}</div></div>`;}).join('');
+    const bodyHtml=totalItems?(tareasHtml+pendHtml):'<div class="no-t">Sin asignaciones esta semana</div>';
+    return`<div class="colab-card"><div class="cc-name">${esc(col.nombre)}</div><div class="cc-stats">${totalItems} asignaci${totalItems!==1?'ones':'ón'}${h>0?` · ${r1(h)}h`:''}${ex>0?` · <span style="color:var(--rojo)">${r1(ex)}h extra</span>`:''}</div>${bodyHtml}</div>`;
   }).join('');
 }
+function estadoLabel(e){return{urgente:'Urgente',proceso:'En proceso',pausa:'En pausa',enviado:'Enviado',finalizado:'Finalizado'}[e]||e;}
 function openTaskModal(id){
   if(ST.role!=='admin')return;
   eTId=id||null;
