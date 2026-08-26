@@ -743,9 +743,9 @@ async function loadFromSupabase(){
     D.pendientes=(jobsData||[]).map(j=>{
       const links=(attData||[]).filter(a=>a.entity_id===j.id).map(a=>({label:a.label||'',url:a.url||''}));
       const jobCols=(jobAssData||[]).filter(a=>a.job_id===j.id).map(a=>a.user_id);
-      const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:c.created_at.slice(0,10),_sbId:c.id}));
+      const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:fmtSbDate(c.created_at),_sbId:c.id}));
       const desc=j.descripcion?j.titulo+'\n'+j.descripcion:j.titulo;
-      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,fechaEntrega:j.fecha_entrega||null,fecha:j.created_at?.slice(0,10)||fmtD(new Date())};
+      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
     });
 
     D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
@@ -1008,7 +1008,18 @@ function swV(v){
 
 /* ═══ HELPERS ═══ */
 function getMonday(d){const dt=new Date(d),dy=dt.getDay(),df=dy===0?-6:1-dy;dt.setDate(dt.getDate()+df);dt.setHours(0,0,0,0);return dt;}
-function fmtD(d){return d.toISOString().slice(0,10);}
+function fmtD(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function fmtSbDate(iso){
+  // Convierte timestamp UTC de Supabase a fecha local (Paraguay GMT-3)
+  if(!iso)return fmtD(new Date());
+  const d=new Date(iso);
+  return fmtD(d);
+}
 function fmtDM(d){return d.toLocaleDateString('es-PY',{day:'2-digit',month:'2-digit'});}
 function uid(){
   if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();
