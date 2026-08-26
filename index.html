@@ -131,6 +131,8 @@ label{font-size:11px;font-weight:800;color:var(--gris);display:block;margin-bott
 .ef3{background:#eef5ee;}.ef3 .ef-dot{background:var(--verde);}
 .ef4{background:#f5eef9;}.ef4 .ef-dot{background:var(--lila);}
 .cob-ag{font-size:10px;font-weight:700;padding:2px 5px;border-radius:5px;margin-bottom:2px;background:#fff4e2;color:#8a4800;border-left:3px solid var(--naranja);cursor:default;}
+.pend-ag{font-size:10px;font-weight:700;padding:2px 5px;border-radius:5px;margin-bottom:2px;background:#fdeef0;color:#a02040;border-left:3px solid var(--rosa2);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pend-ag:hover{background:#fbe0e4;}
 .tdot{font-size:10px;font-weight:700;padding:2px 5px;border-radius:5px;background:var(--crema2);color:var(--gris);margin-bottom:2px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
 /* ── SEMANA ── */
@@ -619,6 +621,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
     <input type="hidden" id="pm_id">
     <div class="field"><label>Cliente</label><select id="pm_cli"></select></div>
     <div class="field"><label>Descripción</label><textarea id="pm_desc" rows="4" placeholder="Ej: Diseño de posteo:&#10;- Formato cuadrado&#10;- Colores de marca&#10;- Con logo" style="resize:vertical;line-height:1.6;"></textarea></div>
+    <div class="field"><label>Fecha de entrega <span style="font-weight:500;color:var(--gris2);font-size:10px;text-transform:none;letter-spacing:0;">(aparece en Semana y Agenda)</span></label><input id="pm_fecha" type="date"></div>
     <div class="field"><label>Estado</label>
       <div class="pill-sel" id="pm_est">
         <div class="pill on" data-v="proceso" onclick="selP('pm_est','proceso')">En proceso</div>
@@ -636,6 +639,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
         <div class="pill" data-v="urgente" onclick="selP('pm_pri','urgente')">Urgente</div>
       </div>
     </div>
+    <div class="field"><label>Colaborador a cargo</label><div class="chip-sel" id="pm_cols"></div></div>
     <div class="field"><label>Observación</label><textarea id="pm_obs" rows="2" placeholder="Detalles, contexto…"></textarea></div>
     <div class="field">
       <label>Links / Info</label>
@@ -718,7 +722,7 @@ async function loadFromSupabase(){
     const[
       {data:cliData},{data:jobsData},{data:attData},{data:commData},
       {data:usrData},{data:tskData},{data:tskAss},{data:covData},
-      {data:covAss},{data:calData},{data:cfgData}
+      {data:covAss},{data:calData},{data:cfgData},{data:jobAssData}
     ]=await Promise.all([
       sbc.from('clients').select('*').eq('is_active',true).order('created_at'),
       sbc.from('jobs').select('*').order('created_at',{ascending:false}),
@@ -731,15 +735,17 @@ async function loadFromSupabase(){
       sbc.from('coverage_assignments').select('*'),
       sbc.from('calendar_items').select('*').order('fecha'),
       sbc.from('config').select('*'),
+      sbc.from('job_assignments').select('*'),
     ]);
 
     D.clientes=(cliData||[]).map(c=>({id:c.id,nombre:c.nombre,color:c.color||'#e5ddd0',emoji:c.emoji||''}));
 
     D.pendientes=(jobsData||[]).map(j=>{
       const links=(attData||[]).filter(a=>a.entity_id===j.id).map(a=>({label:a.label||'',url:a.url||''}));
+      const jobCols=(jobAssData||[]).filter(a=>a.job_id===j.id).map(a=>a.user_id);
       const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:c.created_at.slice(0,10),_sbId:c.id}));
       const desc=j.descripcion?j.titulo+'\n'+j.descripcion:j.titulo;
-      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,createdBy:j.created_by||null,fecha:j.created_at?.slice(0,10)||fmtD(new Date())};
+      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,fechaEntrega:j.fecha_entrega||null,fecha:j.created_at?.slice(0,10)||fmtD(new Date())};
     });
 
     D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
@@ -800,10 +806,19 @@ function sbSaveJob(job){
   const lines=job.desc.split('\n');
   const row={id:job.id,client_id:job.clienteId,titulo:lines[0],descripcion:lines.slice(1).join('\n')||null,estado:job.estado,prioridad:job.prioridad,observacion:job.obs||null};
   if(job.createdBy)row.created_by=job.createdBy;
+  row.fecha_entrega=job.fechaEntrega||null;
   sbSave('jobs',row);
   sbDelWhere('attachments','entity_id',job.id);
   if(job.links&&job.links.length){
     sbc.from('attachments').insert(job.links.map((l,i)=>({entity_type:'job',entity_id:job.id,type:'link',label:l.label,url:l.url,uploaded_by_type:'admin',orden:i})));
+  }
+  // Guardar colaboradores asignados al job
+  if(sbc){
+    sbc.from('job_assignments').delete().eq('job_id',job.id).then(()=>{
+      if(job.colaboradores&&job.colaboradores.length){
+        sbc.from('job_assignments').insert(job.colaboradores.map(uid=>({job_id:job.id,user_id:uid}))).then(({error})=>{if(error)console.error('job_assignments error',error);});
+      }
+    });
   }
 }
 function sbDelJob(id){sbDel('jobs',id);}
@@ -1056,7 +1071,16 @@ function renderAgenda(){
         el.textContent=`🎬 ${c.cliente}`;el.title=`${c.evento} · ${c.horario||''}`;
         cell.appendChild(el);
       });
-      // NO mostramos tareas/pendientes en la agenda — solo efemérides, eventos, reuniones y coberturas
+      // Pendientes de Pendientes 360 con fecha de entrega en este día
+      D.pendientes.filter(p=>p.fechaEntrega===ds).forEach(p=>{
+        const cli=D.clientes.find(x=>x.id===p.clienteId);
+        const titulo=p.desc.split('\n')[0];
+        const el=document.createElement('div');el.className='pend-ag';
+        el.textContent=`📌 ${titulo.slice(0,18)}${titulo.length>18?'…':''}`;
+        el.title=`${titulo}${cli?' · '+cli.nombre:''}`;
+        el.onclick=(e)=>{e.stopPropagation();if(ST.role==='admin')openPendModal(null,p.id);};
+        cell.appendChild(el);
+      });
       if(inM&&ST.role==='admin')cell.addEventListener('click',()=>openEfModal(ds));
       wk.appendChild(cell);
       cur.setDate(cur.getDate()+1);
@@ -1111,12 +1135,18 @@ function renderSemana(){
     const d=days[i],ds=fmtD(d),col=document.createElement('div');
     col.className='day-col'+(ds===ts?' today':'');
     const tt=D.tareas.filter(t=>t.fecha===ds&&(ST.role==='admin'||t.colaboradores.includes(ST.cid))).sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
-    col.innerHTML=`<div class="day-head"><span class="day-dow">${dow}</span><span class="day-num">${d.getDate()}</span></div>`+(tt.length?tt.map(t=>mkChip(t)).join(''):'<div class="empty-day">—</div>');
+    const pendDia=D.pendientes.filter(p=>p.fechaEntrega===ds);
+    const chipsHtml=tt.map(t=>mkChip(t)).join('')+pendDia.map(p=>mkPendChip(p)).join('');
+    col.innerHTML=`<div class="day-head"><span class="day-dow">${dow}</span><span class="day-num">${d.getDate()}</span></div>`+(chipsHtml||'<div class="empty-day">—</div>');
     grid.appendChild(col);
   });
-  grid.querySelectorAll('.tc-chip').forEach(el=>el.addEventListener('click',()=>{if(ST.role==='admin')openTaskModal(el.dataset.id);}));
+  grid.querySelectorAll('.tc-chip').forEach(el=>el.addEventListener('click',()=>{
+    if(el.dataset.pendid){if(ST.role==='admin')openPendModal(null,el.dataset.pendid);}
+    else if(el.dataset.id&&ST.role==='admin')openTaskModal(el.dataset.id);
+  }));
 }
 function mkChip(t){const c=cH(t.fecha,t.horaInicio,t.horaFin);const nn=t.colaboradores.map(id=>D.colaboradores.find(c=>c.id===id)?.nombre||'').filter(Boolean).join(', ');return`<div class="tc-chip${c.extra>0?' extra':''}" data-id="${t.id}"><div class="tc-title">${esc(t.titulo)}${t.tipo==='proyecto'?'<span class="badge badge-p">PROY</span>':''}${c.extra>0?'<span class="badge badge-x">EXTRA</span>':''}</div><div class="tc-meta">${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}${nn?' · '+esc(nn):''}</div></div>`;}
+function mkPendChip(p){const cli=D.clientes.find(x=>x.id===p.clienteId);const titulo=p.desc.split('\n')[0];const cargo=(p.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip pend-chip" data-pendid="${p.id}" style="border-left-color:var(--rosa2);background:#fdeef0;"><div class="tc-title">📌 ${esc(titulo)}</div><div class="tc-meta">Entrega${cli?' · '+esc(cli.nombre):''}${cargo?' · 👤 '+esc(cargo):''}</div></div>`;}
 function renderCWk(){
   const days=[];for(let i=0;i<6;i++){const d=new Date(cwS);d.setDate(d.getDate()+i);days.push(fmtD(d));}
   document.getElementById('colabWkGrid').innerHTML=D.colaboradores.map(col=>{
@@ -1172,9 +1202,14 @@ function piHTML(p,num){
     ?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${p.links.map(l=>`<a class="pi-link" href="${esc(l.url)}" target="_blank">🔗 ${esc(l.label||'Link')}</a>`).join('')}</div>`
     :(p.link?`<a class="pi-link" href="${esc(p.link)}" target="_blank">📂 Ver archivo</a>`:'');
   let creador='';
-  if(ST.role==='admin'&&p.createdBy){
-    const cr=D.colaboradores.find(x=>x.id===p.createdBy);
-    if(cr)creador=`<div style="font-size:10.5px;color:var(--gris2);font-weight:700;margin-top:4px;">👤 Creado por ${esc(cr.nombre)}</div>`;
+  const aCargo=(p.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');
+  if(ST.role==='admin'){
+    let parts=[];
+    if(aCargo)parts.push(`👤 A cargo: ${esc(aCargo)}`);
+    if(p.createdBy){const cr=D.colaboradores.find(x=>x.id===p.createdBy);if(cr)parts.push(`✍️ Creado por ${esc(cr.nombre)}`);}
+    if(parts.length)creador=`<div style="font-size:10.5px;color:var(--gris2);font-weight:700;margin-top:4px;">${parts.join(' · ')}</div>`;
+  } else if(aCargo){
+    creador=`<div style="font-size:10.5px;color:var(--gris2);font-weight:700;margin-top:4px;">👤 A cargo: ${esc(aCargo)}</div>`;
   }
   return`<div class="pi"><div class="pi-top"><div class="pi-num">${num}</div><div class="pi-body"><div class="pi-title">${esc(p.desc)}</div><div class="pi-badges">${stTag(p.estado)}${prTag(p.prioridad)}</div>${p.obs?`<div class="pi-obs">${esc(p.obs)}</div>`:''}${linksHtml}${creador}</div>${ST.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="openPendModal(null,'${p.id}')">Editar</button>`:''}</div>${comms.length?`<div class="pi-comms">${comms.map(c=>`<div class="pi-comm"><div class="pi-comm-meta">${esc(c.autor)} · ${c.fecha}</div>${esc(c.text)}</div>`).join('')}</div>`:''}<div class="pi-actions"><button class="btn btn-ghost btn-sm" onclick="openComm('${p.id}')">💬 Comentar</button></div></div>`;
 }
@@ -1266,6 +1301,13 @@ function openPendModal(cid,pid){
   document.getElementById('pm_cli').innerHTML=D.clientes.map(c=>`<option value="${c.id}"${(cid&&c.id===cid)||(p&&c.id===p.clienteId)?' selected':''}>${esc(c.nombre)}</option>`).join('');
   document.getElementById('pm_desc').value=p?.desc||'';
   document.getElementById('pm_obs').value=p?.obs||'';
+  document.getElementById('pm_fecha').value=p?.fechaEntrega||'';
+  // Colaboradores a cargo
+  const pcw=document.getElementById('pm_cols');
+  pcw.innerHTML=D.colaboradores.map(col=>`<div class="chip" data-id="${col.id}">${esc(col.nombre)}</div>`).join('');
+  pcw.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>ch.classList.toggle('on')));
+  const asignados=p?.colaboradores||[];
+  asignados.forEach(cid2=>{const el=pcw.querySelector(`[data-id="${cid2}"]`);if(el)el.classList.add('on');});
   // Links múltiples
   document.getElementById('pm_links_wrap').innerHTML='';
   const links=p?.links||[];
@@ -1277,9 +1319,11 @@ function openPendModal(cid,pid){
 function savePend(){
   const desc=document.getElementById('pm_desc').value.trim();if(!desc){alert('Escribí la descripción.');return;}
   const pid=document.getElementById('pm_id').value;
-  const existing=pid?D.pendientes.find(x=>x.id===pid):null;const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),fecha:existing?.fecha||fmtD(new Date())};
+  const existing=pid?D.pendientes.find(x=>x.id===pid):null;
+  const colsAsignados=[...document.querySelectorAll('#pm_cols .chip.on')].map(ch=>ch.dataset.id);
+  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date())};
   if(pid)D.pendientes=D.pendientes.map(p=>p.id===pid?obj:p);else D.pendientes.push(obj);
-  sd();sbSaveJob(obj);closeM('pendBg');renderPend();
+  sd();sbSaveJob(obj);closeM('pendBg');renderPend();renderSemana();if(ST.role==='admin')renderCWk();if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
 }
 function delPend(){if(!confirm('¿Eliminar?'))return;const pid=document.getElementById('pm_id').value;D.pendientes=D.pendientes.filter(p=>p.id!==pid);sd();sbDelJob(pid);closeM('pendBg');renderPend();}
 document.getElementById('pendBg').addEventListener('click',e=>{if(e.target.id==='pendBg')closeM('pendBg');});
