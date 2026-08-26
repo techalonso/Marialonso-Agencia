@@ -823,23 +823,25 @@ async function sbDelWhere(table,col,val){
 function sbSaveClient(cl){sbSave('clients',{id:cl.id,nombre:cl.nombre,color:cl.color,emoji:cl.emoji,is_active:true});}
 function sbDelClient(id){sbDel('clients',id);}
 
-function sbSaveJob(job){
+async function sbSaveJob(job){
+  if(!sbc)return;
   const lines=job.desc.split('\n');
   const row={id:job.id,client_id:job.clienteId,titulo:lines[0],descripcion:lines.slice(1).join('\n')||null,estado:job.estado,prioridad:job.prioridad,observacion:job.obs||null};
   if(job.createdBy)row.created_by=job.createdBy;
   row.fecha_entrega=job.fechaEntrega||null;
-  sbSave('jobs',row);
-  sbDelWhere('attachments','entity_id',job.id);
+  // 1. Guardar el job PRIMERO
+  const{error:jobErr}=await sbc.from('jobs').upsert(row);
+  if(jobErr){console.error('sbSaveJob error',jobErr);toast('⚠️ Error al guardar: '+jobErr.message);return;}
+  // 2. Links
+  await sbc.from('attachments').delete().eq('entity_id',job.id);
   if(job.links&&job.links.length){
-    sbc.from('attachments').insert(job.links.map((l,i)=>({entity_type:'job',entity_id:job.id,type:'link',label:l.label,url:l.url,uploaded_by_type:'admin',orden:i})));
+    await sbc.from('attachments').insert(job.links.map((l,i)=>({entity_type:'job',entity_id:job.id,type:'link',label:l.label,url:l.url,uploaded_by_type:'admin',orden:i})));
   }
-  // Guardar colaboradores asignados al job
-  if(sbc){
-    sbc.from('job_assignments').delete().eq('job_id',job.id).then(()=>{
-      if(job.colaboradores&&job.colaboradores.length){
-        sbc.from('job_assignments').insert(job.colaboradores.map(uid=>({job_id:job.id,user_id:uid}))).then(({error})=>{if(error)console.error('job_assignments error',error);});
-      }
-    });
+  // 3. Colaboradores asignados
+  await sbc.from('job_assignments').delete().eq('job_id',job.id);
+  if(job.colaboradores&&job.colaboradores.length){
+    const{error:assErr}=await sbc.from('job_assignments').insert(job.colaboradores.map(uid=>({job_id:job.id,user_id:uid})));
+    if(assErr){console.error('job_assignments error',assErr);toast('⚠️ Error al asignar colaborador: '+assErr.message);}
   }
 }
 function sbDelJob(id){sbDel('jobs',id);}
@@ -849,15 +851,17 @@ function sbSaveComment(entityType,entityId,comm,authorType){
   sbc.from('comments').insert({entity_type:entityType,entity_id:entityId,author_name:comm.autor,author_type:authorType||'admin',body:comm.text,user_id:ST.cid||null}).then(({error})=>{if(error){console.error('sbSaveComment error',error);toast('⚠️ Error al guardar comentario: '+error.message);}});
 }
 
-function sbSaveTask(task){
+async function sbSaveTask(task){
+  if(!sbc)return;
   const cli=D.clientes.find(c=>c.nombre===task.cliente);
-  sbSave('tasks',{id:task.id,client_id:task.clienteId||cli?.id||null,titulo:task.titulo,tipo:task.tipo,categoria:task.categoria,fecha:task.fecha,fecha_entrega:task.fechaEntrega||null,hora_inicio:task.horaInicio,hora_fin:task.horaFin,estado:task.estado,notas:task.notas||null});
-  if(sbc){
-    sbc.from('task_assignments').delete().eq('task_id',task.id).then(()=>{
-      if(task.colaboradores&&task.colaboradores.length){
-        sbc.from('task_assignments').insert(task.colaboradores.map(uid=>({task_id:task.id,user_id:uid}))).then(({error})=>{if(error){console.error('task_assignments error',error);toast('⚠️ Error al asignar colaborador: '+error.message);}});
-      }
-    });
+  // 1. Guardar la tarea PRIMERO y esperar a que exista en la base
+  const{error:taskErr}=await sbc.from('tasks').upsert({id:task.id,client_id:task.clienteId||cli?.id||null,titulo:task.titulo,tipo:task.tipo,categoria:task.categoria,fecha:task.fecha,fecha_entrega:task.fechaEntrega||null,hora_inicio:task.horaInicio,hora_fin:task.horaFin,estado:task.estado,notas:task.notas||null});
+  if(taskErr){console.error('sbSaveTask error',taskErr);toast('⚠️ Error al guardar tarea: '+taskErr.message);return;}
+  // 2. Recién ahora, actualizar las asignaciones de colaboradores
+  await sbc.from('task_assignments').delete().eq('task_id',task.id);
+  if(task.colaboradores&&task.colaboradores.length){
+    const{error:assErr}=await sbc.from('task_assignments').insert(task.colaboradores.map(uid=>({task_id:task.id,user_id:uid})));
+    if(assErr){console.error('task_assignments error',assErr);toast('⚠️ Error al asignar colaborador: '+assErr.message);}
   }
 }
 function sbDelTask(id){sbDel('tasks',id);}
@@ -869,13 +873,16 @@ async function sbSaveCalendarItem(dateStr,item){
 }
 function sbDelCalendarItem(itemId){sbDel('calendar_items',itemId);}
 
-function sbSaveCoverage(cov){
+async function sbSaveCoverage(cov){
+  if(!sbc)return;
   const parts=(cov.horario||'').split(' – ');
   if(!cov.clienteId){toast('⚠️ La cobertura necesita un cliente');return;}
-  sbSave('coverages',{id:cov.id,client_id:cov.clienteId,evento:cov.evento,ubicacion:cov.ubicacion||null,fecha:cov.fecha,hora_inicio:parts[0]||null,hora_fin:parts[1]||null,costo_traslado_ida:cov.costoIda||0,costo_traslado_vuelta:cov.costoVuelta||0});
-  sbDelWhere('coverage_assignments','coverage_id',cov.id);
+  const{error:covErr}=await sbc.from('coverages').upsert({id:cov.id,client_id:cov.clienteId,evento:cov.evento,ubicacion:cov.ubicacion||null,fecha:cov.fecha,hora_inicio:parts[0]||null,hora_fin:parts[1]||null,costo_traslado_ida:cov.costoIda||0,costo_traslado_vuelta:cov.costoVuelta||0});
+  if(covErr){console.error('sbSaveCoverage error',covErr);toast('⚠️ Error al guardar cobertura: '+covErr.message);return;}
+  await sbc.from('coverage_assignments').delete().eq('coverage_id',cov.id);
   if(cov.colaboradores&&cov.colaboradores.length){
-    sbc.from('coverage_assignments').insert(cov.colaboradores.map(uid=>({coverage_id:cov.id,user_id:uid,self_assigned:false})));
+    const{error:assErr}=await sbc.from('coverage_assignments').insert(cov.colaboradores.map(uid=>({coverage_id:cov.id,user_id:uid,self_assigned:false})));
+    if(assErr){console.error('coverage_assignments error',assErr);toast('⚠️ Error al asignar colaborador: '+assErr.message);}
   }
 }
 function sbDelCoverage(id){sbDel('coverages',id);}
