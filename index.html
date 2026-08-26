@@ -825,7 +825,7 @@ function sbDelJob(id){sbDel('jobs',id);}
 
 function sbSaveComment(entityType,entityId,comm,authorType){
   if(!sbc)return;
-  sbc.from('comments').insert({entity_type:entityType,entity_id:entityId,author_name:comm.autor,author_type:authorType||'admin',body:comm.text,user_id:ST.cid||null});
+  sbc.from('comments').insert({entity_type:entityType,entity_id:entityId,author_name:comm.autor,author_type:authorType||'admin',body:comm.text,user_id:ST.cid||null}).then(({error})=>{if(error){console.error('sbSaveComment error',error);toast('⚠️ Error al guardar comentario: '+error.message);}});
 }
 
 function sbSaveTask(task){
@@ -1342,7 +1342,7 @@ function savePend(){
 function delPend(){if(!confirm('¿Eliminar?'))return;const pid=document.getElementById('pm_id').value;D.pendientes=D.pendientes.filter(p=>p.id!==pid);sd();sbDelJob(pid);closeM('pendBg');renderPend();}
 document.getElementById('pendBg').addEventListener('click',e=>{if(e.target.id==='pendBg')closeM('pendBg');});
 function openComm(pid){document.getElementById('cm_pid').value=pid;document.getElementById('cm_txt').value='';document.getElementById('commBg').classList.add('open');setTimeout(()=>document.getElementById('cm_txt').focus(),50);}
-function saveComm(){const pid=document.getElementById('cm_pid').value,tx=document.getElementById('cm_txt').value.trim();if(!tx)return;const p=D.pendientes.find(x=>x.id===pid);if(!p)return;if(!p.comentarios)p.comentarios=[];const col=ST.cid?D.colaboradores.find(c=>c.id===ST.cid):null;const comm={text:tx,autor:ST.role==='admin'?'Admin':(col?.nombre||'Colaborador'),fecha:fmtD(new Date())};p.comentarios.push(comm);sd();sbSaveComment('job',id,comm,ST.role==='admin'?'admin':'collaborator');closeM('commBg');renderPend();}
+function saveComm(){const pid=document.getElementById('cm_pid').value,tx=document.getElementById('cm_txt').value.trim();if(!tx)return;const p=D.pendientes.find(x=>x.id===pid);if(!p)return;if(!p.comentarios)p.comentarios=[];const col=ST.cid?D.colaboradores.find(c=>c.id===ST.cid):null;const comm={text:tx,autor:ST.role==='admin'?'Admin':(col?.nombre||'Colaborador'),fecha:fmtD(new Date())};p.comentarios.push(comm);sd();sbSaveComment('job',pid,comm,ST.role==='admin'?'admin':'collaborator');closeM('commBg');renderPend();}
 document.getElementById('commBg').addEventListener('click',e=>{if(e.target.id==='commBg')closeM('commBg');});
 function cpLink(cid){const cl=D.clientes.find(c=>c.id===cid);const url=location.href.split('#')[0]+'#pend/'+cid;navigator.clipboard.writeText(url).then(()=>toast(`🔗 Link de ${cl?.nombre||'cliente'} copiado`)).catch(()=>prompt('Copiá el link:',url));}
 
