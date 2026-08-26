@@ -831,9 +831,12 @@ function sbSaveComment(entityType,entityId,comm,authorType){
 function sbSaveTask(task){
   const cli=D.clientes.find(c=>c.nombre===task.cliente);
   sbSave('tasks',{id:task.id,client_id:task.clienteId||cli?.id||null,titulo:task.titulo,tipo:task.tipo,categoria:task.categoria,fecha:task.fecha,hora_inicio:task.horaInicio,hora_fin:task.horaFin,estado:task.estado,notas:task.notas||null});
-  sbDelWhere('task_assignments','task_id',task.id);
-  if(task.colaboradores&&task.colaboradores.length){
-    sbc.from('task_assignments').insert(task.colaboradores.map(uid=>({task_id:task.id,user_id:uid})));
+  if(sbc){
+    sbc.from('task_assignments').delete().eq('task_id',task.id).then(()=>{
+      if(task.colaboradores&&task.colaboradores.length){
+        sbc.from('task_assignments').insert(task.colaboradores.map(uid=>({task_id:task.id,user_id:uid}))).then(({error})=>{if(error){console.error('task_assignments error',error);toast('⚠️ Error al asignar colaborador: '+error.message);}});
+      }
+    });
   }
 }
 function sbDelTask(id){sbDel('tasks',id);}
