@@ -1236,13 +1236,17 @@ function renderCWk(){
       if(p.fechaEntrega)return days.includes(p.fechaEntrega);
       return true; // sin fecha de entrega pero activo y a cargo
     });
+    // Coberturas asignadas a este colaborador esta semana
+    const cc=D.coberturas.filter(cv=>(cv.colaboradores||[]).includes(col.id)&&days.includes(cv.fecha));
     let h=0,ex=0;tt.forEach(t=>{const c=cH(t.fecha,t.horaInicio,t.horaFin);h+=c.total;ex+=c.extra;});
-    const totalItems=tt.length+pp.length;
+    const totalItems=tt.length+pp.length+cc.length;
     // Render tareas
     const tareasHtml=tt.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(t=>{const c=cH(t.fecha,t.horaInicio,t.horaFin);return`<div class="cc-task${c.extra>0?' xtra':''}"><div class="cc-title">${esc(t.titulo)}</div><div class="cc-meta">${t.fecha.slice(8)} · ${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}</div></div>`;}).join('');
     // Render trabajos/pendientes (con estilo rosa para distinguir)
     const pendHtml=pp.sort((a,b)=>(a.fechaEntrega||'9999').localeCompare(b.fechaEntrega||'9999')).map(p=>{const cli=D.clientes.find(x=>x.id===p.clienteId);const titulo=p.desc.split('\n')[0];const entregaTxt=p.fechaEntrega?`Entrega ${p.fechaEntrega.slice(8)}`:'Sin fecha';return`<div class="cc-task" style="border-left-color:var(--rosa2);background:#fdeef0;"><div class="cc-title">📌 ${esc(titulo)}</div><div class="cc-meta">${entregaTxt}${cli?' · '+esc(cli.nombre):''} · ${esc(estadoLabel(p.estado))}</div></div>`;}).join('');
-    const bodyHtml=totalItems?(tareasHtml+pendHtml):'<div class="no-t">Sin asignaciones esta semana</div>';
+    // Render coberturas (estilo naranja)
+    const cobHtml=cc.sort((a,b)=>a.fecha.localeCompare(b.fecha)).map(cv=>{return`<div class="cc-task" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="cc-title">🎬 ${esc(cv.evento)}</div><div class="cc-meta">${cv.fecha.slice(8)}${cv.cliente?' · '+esc(cv.cliente):''}${cv.horario?' · '+esc(cv.horario):''}</div></div>`;}).join('');
+    const bodyHtml=totalItems?(cobHtml+tareasHtml+pendHtml):'<div class="no-t">Sin asignaciones esta semana</div>';
     return`<div class="colab-card"><div class="cc-name">${esc(col.nombre)}</div><div class="cc-stats">${totalItems} asignaci${totalItems!==1?'ones':'ón'}${h>0?` · ${r1(h)}h`:''}${ex>0?` · <span style="color:var(--rojo)">${r1(ex)}h extra</span>`:''}</div>${bodyHtml}</div>`;
   }).join('');
 }
