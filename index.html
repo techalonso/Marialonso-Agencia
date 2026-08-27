@@ -1190,7 +1190,8 @@ function renderSemana(){
     // Tareas cuya FECHA DE ENTREGA cae este día (y es distinta al día agendado)
     const tareasEntrega=D.tareas.filter(t=>t.fechaEntrega===ds&&t.fecha!==ds);
     const cobDia=D.coberturas.filter(cv=>cv.fecha===ds);
-    const chipsHtml=cobDia.map(cv=>mkCobChip(cv)).join('')+tt.map(t=>mkChip(t)).join('')+tareasEntrega.map(t=>mkTaskDeadlineChip(t)).join('')+pendDia.map(p=>mkPendChip(p)).join('');
+    const efDia=D.efemerides[ds]||[];
+    const chipsHtml=efDia.map(ef=>mkEfChip(ef)).join('')+cobDia.map(cv=>mkCobChip(cv)).join('')+tt.map(t=>mkChip(t)).join('')+tareasEntrega.map(t=>mkTaskDeadlineChip(t)).join('')+pendDia.map(p=>mkPendChip(p)).join('');
     col.innerHTML=`<div class="day-head"><span class="day-dow">${dow}</span><span class="day-num">${d.getDate()}</span></div>`+(chipsHtml||'<div class="empty-day">—</div>');
     grid.appendChild(col);
   });
@@ -1199,6 +1200,11 @@ function renderSemana(){
     else if(el.dataset.cobid){openCobModal(el.dataset.cobid);}
     else if(el.dataset.id&&ST.role==='admin')openTaskModal(el.dataset.id);
   }));
+}
+function mkEfChip(ef){
+  const tipos={efemeride:{ic:'📅',lbl:'Efeméride',bg:'#f3f0ff',bd:'#8b7fd4'},evento:{ic:'🎉',lbl:'Evento',bg:'#e6f7ff',bd:'#4969b2'},reunion:{ic:'🤝',lbl:'Reunión',bg:'#fff0f3',bd:'#c22e2e'}};
+  const t=tipos[ef.tipo||'efemeride']||tipos.efemeride;
+  return`<div class="tc-chip" style="border-left-color:${t.bd};background:${t.bg};"><div class="tc-title">${t.ic} ${esc(ef.text)}</div><div class="tc-meta">${t.lbl}${ef.hora?' · '+ef.hora:''}</div></div>`;
 }
 function mkCobChip(cv){const cargo=(cv.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip" data-cobid="${cv.id}" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="tc-title">🎬 ${esc(cv.evento)}</div><div class="tc-meta">${cv.cliente?esc(cv.cliente):''}${cv.horario?' · '+esc(cv.horario):''}${cargo?' · 👤 '+esc(cargo):' · Sin asignar'}</div></div>`;}
 function mkChip(t){const c=cH(t.fecha,t.horaInicio,t.horaFin);const nn=t.colaboradores.map(id=>D.colaboradores.find(c=>c.id===id)?.nombre||'').filter(Boolean).join(', ');return`<div class="tc-chip${c.extra>0?' extra':''}" data-id="${t.id}"><div class="tc-title">${esc(t.titulo)}${t.tipo==='proyecto'?'<span class="badge badge-p">PROY</span>':''}${c.extra>0?'<span class="badge badge-x">EXTRA</span>':''}</div><div class="tc-meta">${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}${nn?' · '+esc(nn):''}</div></div>`;}
