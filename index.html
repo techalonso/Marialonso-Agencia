@@ -767,7 +767,7 @@ async function loadFromSupabase(){
       const jobCols=(jobAssData||[]).filter(a=>a.job_id===j.id).map(a=>a.user_id);
       const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:fmtSbDate(c.created_at),_sbId:c.id}));
       const desc=j.descripcion?j.titulo+'\n'+j.descripcion:j.titulo;
-      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,lastEditedBy:j.last_edited_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
+      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,origen:j.origen||'agencia',lastEditedBy:j.last_edited_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
     });
 
     D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
@@ -828,6 +828,7 @@ async function sbSaveJob(job){
   const row={id:job.id,client_id:job.clienteId,titulo:lines[0],descripcion:lines.slice(1).join('\n')||null,estado:job.estado,prioridad:job.prioridad,observacion:job.obs||null};
   if(job.createdBy)row.created_by=job.createdBy;
   if(job.lastEditedBy)row.last_edited_by=job.lastEditedBy;
+  row.origen=job.origen||'agencia';
   row.fecha_entrega=job.fechaEntrega||null;
   // 1. Guardar el job PRIMERO
   const{error:jobErr}=await sbc.from('jobs').upsert(row);
@@ -1297,6 +1298,7 @@ function piHTML(p,num){
   if(ST.role==='admin'){
     let parts=[];
     if(aCargo)parts.push(`👤 A cargo: ${esc(aCargo)}`);
+    if(p.origen==='cliente')parts.push(`📨 Solicitud del cliente`);
     if(p.createdBy){const cr=D.colaboradores.find(x=>x.id===p.createdBy);if(cr)parts.push(`✍️ Creado por ${esc(cr.nombre)}`);}
     if(parts.length)creador=`<div style="font-size:10.5px;color:var(--gris2);font-weight:700;margin-top:4px;">${parts.join(' · ')}</div>`;
   } else if(aCargo){
@@ -1432,6 +1434,7 @@ function renderRpt(){
 function editorNombre(val){
   if(!val)return '—';
   if(val==='__admin__')return 'Admin';
+  if(val==='__client__')return 'Cliente';
   const u=D.colaboradores.find(c=>c.id===val);
   return u?u.nombre:'—';
 }
@@ -1658,7 +1661,7 @@ function getPnwLinks(){
 function submitNewWork(){
   const desc=document.getElementById('pnw_desc').value.trim();if(!desc){alert('Describí lo que necesitás.');return;}
   const links=getPnwLinks();
-  const nuevoJob={id:uid(),clienteId:_portalClientId,desc,estado:'proceso',prioridad:gP('pnw_pri')||'bajo',obs:document.getElementById('pnw_obs').value.trim(),links,comentarios:[],createdBy:null,createdByClient:true,fecha:fmtD(new Date())};
+  const nuevoJob={id:uid(),clienteId:_portalClientId,desc,estado:'proceso',prioridad:gP('pnw_pri')||'bajo',obs:document.getElementById('pnw_obs').value.trim(),links,comentarios:[],createdBy:null,origen:'cliente',fecha:fmtD(new Date())};
   D.pendientes.push(nuevoJob);
   sbSaveJob(nuevoJob);
   sd();
