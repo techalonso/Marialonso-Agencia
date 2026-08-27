@@ -364,7 +364,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
   </nav>
   <nav class="tabs" id="colabNav" style="display:none;">
     <button data-view="agenda" class="active">🗓 Agenda</button>
-    <button data-view="semana">📅 Mi semana</button>
+    <button data-view="semana">📅 Semana</button>
     <button data-view="pendientes">📌 Pendientes 360</button>
     <button data-view="coberturas">🎬 Coberturas</button>
   </nav>
@@ -766,7 +766,7 @@ async function loadFromSupabase(){
       const jobCols=(jobAssData||[]).filter(a=>a.job_id===j.id).map(a=>a.user_id);
       const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:fmtSbDate(c.created_at),_sbId:c.id}));
       const desc=j.descripcion?j.titulo+'\n'+j.descripcion:j.titulo;
-      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
+      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,lastEditedBy:j.last_edited_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
     });
 
     D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
@@ -774,7 +774,7 @@ async function loadFromSupabase(){
     D.tareas=(tskData||[]).map(t=>{
       const cols=(tskAss||[]).filter(a=>a.task_id===t.id).map(a=>a.user_id);
       const cli=D.clientes.find(c=>c.id===t.client_id);
-      return{id:t.id,titulo:t.titulo,tipo:t.tipo,categoria:t.categoria,cliente:cli?.nombre||'',clienteId:t.client_id,fecha:t.fecha,fechaEntrega:t.fecha_entrega||null,horaInicio:t.hora_inicio||'09:00',horaFin:t.hora_fin||'10:00',colaboradores:cols,estado:t.estado,notas:t.notas||''};
+      return{id:t.id,titulo:t.titulo,tipo:t.tipo,categoria:t.categoria,cliente:cli?.nombre||'',clienteId:t.client_id,fecha:t.fecha,fechaEntrega:t.fecha_entrega||null,horaInicio:t.hora_inicio||'09:00',horaFin:t.hora_fin||'10:00',colaboradores:cols,estado:t.estado,notas:t.notas||'',lastEditedBy:t.last_edited_by||null};
     });
 
     D.coberturas=(covData||[]).map(cov=>{
@@ -828,6 +828,7 @@ async function sbSaveJob(job){
   const lines=job.desc.split('\n');
   const row={id:job.id,client_id:job.clienteId,titulo:lines[0],descripcion:lines.slice(1).join('\n')||null,estado:job.estado,prioridad:job.prioridad,observacion:job.obs||null};
   if(job.createdBy)row.created_by=job.createdBy;
+  if(job.lastEditedBy)row.last_edited_by=job.lastEditedBy;
   row.fecha_entrega=job.fechaEntrega||null;
   // 1. Guardar el job PRIMERO
   const{error:jobErr}=await sbc.from('jobs').upsert(row);
@@ -855,7 +856,7 @@ async function sbSaveTask(task){
   if(!sbc)return;
   const cli=D.clientes.find(c=>c.nombre===task.cliente||c.nombre.toLowerCase()===(task.cliente||'').toLowerCase());
   // 1. Guardar la tarea PRIMERO y esperar a que exista en la base
-  const{error:taskErr}=await sbc.from('tasks').upsert({id:task.id,client_id:task.clienteId||cli?.id||null,titulo:task.titulo,tipo:task.tipo,categoria:task.categoria,fecha:task.fecha,fecha_entrega:task.fechaEntrega||null,hora_inicio:task.horaInicio,hora_fin:task.horaFin,estado:task.estado,notas:task.notas||null});
+  const{error:taskErr}=await sbc.from('tasks').upsert({id:task.id,client_id:task.clienteId||cli?.id||null,titulo:task.titulo,tipo:task.tipo,categoria:task.categoria,fecha:task.fecha,fecha_entrega:task.fechaEntrega||null,hora_inicio:task.horaInicio,hora_fin:task.horaFin,estado:task.estado,notas:task.notas||null,last_edited_by:task.lastEditedBy||null});
   if(taskErr){console.error('sbSaveTask error',taskErr);toast('⚠️ Error al guardar tarea: '+taskErr.message);return;}
   // 2. Recién ahora, actualizar las asignaciones de colaboradores
   await sbc.from('task_assignments').delete().eq('task_id',task.id);
@@ -997,8 +998,8 @@ function doLogin(role,cid){
   document.getElementById('efBtn').style.display=role==='admin'?'inline-flex':'none';
   document.getElementById('newTBtn').style.display=role==='admin'?'inline-flex':'none';
   document.getElementById('colabSect').style.display=role==='admin'?'block':'none';
-  document.getElementById('semTitle').textContent=role==='admin'?'Semana':'Mi semana';
-  document.getElementById('semSubt').textContent=role==='admin'?'Lunes a sábado · Horario base 9:00–18:00':'Tus tareas asignadas esta semana';
+  document.getElementById('semTitle').textContent='Semana';
+  document.getElementById('semSubt').textContent='Lunes a sábado · Toda la agenda del equipo';
   document.getElementById('fabWrap').style.display='flex';
   // Show first view
   const nav=document.getElementById(role+'Nav');
@@ -1184,19 +1185,22 @@ function renderSemana(){
   ['Lun','Mar','Mié','Jue','Vie','Sáb'].forEach((dow,i)=>{
     const d=days[i],ds=fmtD(d),col=document.createElement('div');
     col.className='day-col'+(ds===ts?' today':'');
-    const tt=D.tareas.filter(t=>t.fecha===ds&&(ST.role==='admin'||t.colaboradores.includes(ST.cid))).sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
+    const tt=D.tareas.filter(t=>t.fecha===ds).sort((a,b)=>a.horaInicio.localeCompare(b.horaInicio));
     const pendDia=D.pendientes.filter(p=>p.fechaEntrega===ds);
     // Tareas cuya FECHA DE ENTREGA cae este día (y es distinta al día agendado)
-    const tareasEntrega=D.tareas.filter(t=>t.fechaEntrega===ds&&t.fecha!==ds&&(ST.role==='admin'||t.colaboradores.includes(ST.cid)));
-    const chipsHtml=tt.map(t=>mkChip(t)).join('')+tareasEntrega.map(t=>mkTaskDeadlineChip(t)).join('')+pendDia.map(p=>mkPendChip(p)).join('');
+    const tareasEntrega=D.tareas.filter(t=>t.fechaEntrega===ds&&t.fecha!==ds);
+    const cobDia=D.coberturas.filter(cv=>cv.fecha===ds);
+    const chipsHtml=cobDia.map(cv=>mkCobChip(cv)).join('')+tt.map(t=>mkChip(t)).join('')+tareasEntrega.map(t=>mkTaskDeadlineChip(t)).join('')+pendDia.map(p=>mkPendChip(p)).join('');
     col.innerHTML=`<div class="day-head"><span class="day-dow">${dow}</span><span class="day-num">${d.getDate()}</span></div>`+(chipsHtml||'<div class="empty-day">—</div>');
     grid.appendChild(col);
   });
   grid.querySelectorAll('.tc-chip').forEach(el=>el.addEventListener('click',()=>{
     if(el.dataset.pendid){if(ST.role==='admin')openPendModal(null,el.dataset.pendid);}
+    else if(el.dataset.cobid){openCobModal(el.dataset.cobid);}
     else if(el.dataset.id&&ST.role==='admin')openTaskModal(el.dataset.id);
   }));
 }
+function mkCobChip(cv){const cargo=(cv.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip" data-cobid="${cv.id}" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="tc-title">🎬 ${esc(cv.evento)}</div><div class="tc-meta">${cv.cliente?esc(cv.cliente):''}${cv.horario?' · '+esc(cv.horario):''}${cargo?' · 👤 '+esc(cargo):' · Sin asignar'}</div></div>`;}
 function mkChip(t){const c=cH(t.fecha,t.horaInicio,t.horaFin);const nn=t.colaboradores.map(id=>D.colaboradores.find(c=>c.id===id)?.nombre||'').filter(Boolean).join(', ');return`<div class="tc-chip${c.extra>0?' extra':''}" data-id="${t.id}"><div class="tc-title">${esc(t.titulo)}${t.tipo==='proyecto'?'<span class="badge badge-p">PROY</span>':''}${c.extra>0?'<span class="badge badge-x">EXTRA</span>':''}</div><div class="tc-meta">${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}${nn?' · '+esc(nn):''}</div></div>`;}
 function mkTaskDeadlineChip(t){const cli=D.clientes.find(x=>x.nombre===t.cliente);const cargo=(t.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip" data-id="${t.id}" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="tc-title">⏰ ${esc(t.titulo)}</div><div class="tc-meta">Entrega${t.cliente?' · '+esc(t.cliente):''}${cargo?' · 👤 '+esc(cargo):''}</div></div>`;}
 function mkPendChip(p){const cli=D.clientes.find(x=>x.id===p.clienteId);const titulo=p.desc.split('\n')[0];const cargo=(p.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip pend-chip" data-pendid="${p.id}" style="border-left-color:var(--rosa2);background:#fdeef0;"><div class="tc-title">📌 ${esc(titulo)}</div><div class="tc-meta">Entrega${cli?' · '+esc(cli.nombre):''}${cargo?' · 👤 '+esc(cargo):''}</div></div>`;}
@@ -1244,7 +1248,7 @@ function saveTask(){
   const tit=document.getElementById('t_tit').value.trim();if(!tit){alert('Poné un título.');return;}
   const tipo=gP('t_tipo'),cat=tipo==='proyecto'?gP('t_cat'):null;
   const cols=[...document.querySelectorAll('#t_cols .chip.on')].map(c=>c.dataset.id);
-  const task={id:eTId||uid(),titulo:tit,tipo,categoria:cat,cliente:document.getElementById('t_cli').value.trim(),fecha:document.getElementById('t_fec').value,fechaEntrega:document.getElementById('t_fecEntrega').value||null,horaInicio:document.getElementById('t_hi').value,horaFin:document.getElementById('t_hf').value,colaboradores:cols,estado:document.getElementById('t_est').value,notas:document.getElementById('t_not').value.trim()};
+  const task={id:eTId||uid(),titulo:tit,tipo,categoria:cat,cliente:document.getElementById('t_cli').value.trim(),fecha:document.getElementById('t_fec').value,fechaEntrega:document.getElementById('t_fecEntrega').value||null,horaInicio:document.getElementById('t_hi').value,horaFin:document.getElementById('t_hf').value,colaboradores:cols,estado:document.getElementById('t_est').value,notas:document.getElementById('t_not').value.trim(),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid)};
   if(eTId)D.tareas=D.tareas.map(t=>t.id===eTId?task:t);else D.tareas.push(task);
   sd();sbSaveTask(task);closeM('taskBg');renderSemana();renderCWk();
   if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
@@ -1390,7 +1394,7 @@ function savePend(){
   const pid=document.getElementById('pm_id').value;
   const existing=pid?D.pendientes.find(x=>x.id===pid):null;
   const colsAsignados=[...document.querySelectorAll('#pm_cols .chip.on')].map(ch=>ch.dataset.id);
-  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date())};
+  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date())};
   if(pid)D.pendientes=D.pendientes.map(p=>p.id===pid?obj:p);else D.pendientes.push(obj);
   sd();sbSaveJob(obj);closeM('pendBg');renderPend();renderSemana();if(ST.role==='admin')renderCWk();if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
 }
@@ -1407,11 +1411,46 @@ function renderRpt(){
   sel.innerHTML=cls.length?cls.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`):'<option>Sin clientes en tareas</option>';
   renderReporte();
 }
+function editorNombre(val){
+  if(!val)return '—';
+  if(val==='__admin__')return 'Admin';
+  const u=D.colaboradores.find(c=>c.id===val);
+  return u?u.nombre:'—';
+}
 function renderReporte(){
   const cli=document.getElementById('rptSel').value,body=document.getElementById('rptBody');
-  if(!cli){body.innerHTML='<div class="empty">Cargá tareas con cliente asignado.</div>';return;}
-  const tt=D.tareas.filter(t=>t.cliente===cli);let h=0;tt.forEach(t=>{h+=cH(t.fecha,t.horaInicio,t.horaFin).total;});
-  body.innerHTML=`<div class="stat-row"><div class="stat dark"><div class="num">${tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='nuevo').length}</div><div class="slbl">Proyectos nuevos</div></div><div class="stat"><div class="num">${tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='cambio').length}</div><div class="slbl">Cambios</div></div><div class="stat"><div class="num">${tt.length}</div><div class="slbl">Tareas totales</div></div><div class="stat acc"><div class="num">${r1(h)}h</div><div class="slbl">Horas invertidas</div></div></div><div class="card"><h2>Historial — ${esc(cli)}</h2><table><thead><tr><th>Fecha</th><th>Título</th><th>Tipo</th><th>Estado</th></tr></thead><tbody>${tt.sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(t=>`<tr><td>${t.fecha}</td><td>${esc(t.titulo)}</td><td>${t.tipo==='proyecto'?(t.categoria==='nuevo'?'Proyecto nuevo':'Cambio'):'Tarea'}</td><td>${t.estado}</td></tr>`).join('')}</tbody></table></div>`;
+  if(!cli){body.innerHTML='<div class="empty">Seleccioná un cliente para ver su historial.</div>';return;}
+  // Cliente puede venir por nombre (tareas) o por id (pendientes)
+  const cliObj=D.clientes.find(x=>x.nombre===cli);
+  const cliId=cliObj?.id;
+  // Tareas de este cliente
+  const tt=D.tareas.filter(t=>t.cliente===cli);
+  // Trabajos/pendientes de este cliente
+  const pp=D.pendientes.filter(p=>p.clienteId===cliId);
+  let h=0;tt.forEach(t=>{h+=cH(t.fecha,t.horaInicio,t.horaFin).total;});
+
+  // Unificar en un historial: cada item con {fecha, titulo, tipoLabel, estado, editor}
+  const items=[];
+  tt.forEach(t=>items.push({
+    fecha:t.fechaEntrega||t.fecha,
+    titulo:t.titulo,
+    tipoLabel:t.tipo==='proyecto'?(t.categoria==='nuevo'?'Proyecto nuevo':'Cambio'):'Tarea',
+    estado:t.estado,
+    editor:editorNombre(t.lastEditedBy)
+  }));
+  pp.forEach(p=>items.push({
+    fecha:p.fechaEntrega||p.fecha,
+    titulo:p.desc.split('\n')[0],
+    tipoLabel:'Trabajo 360',
+    estado:p.estado,
+    editor:editorNombre(p.lastEditedBy||p.createdBy)
+  }));
+  items.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+
+  const totalProyNuevos=tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='nuevo').length;
+  const totalCambios=tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='cambio').length;
+
+  body.innerHTML=`<div class="stat-row"><div class="stat dark"><div class="num">${totalProyNuevos}</div><div class="slbl">Proyectos nuevos</div></div><div class="stat"><div class="num">${totalCambios}</div><div class="slbl">Cambios</div></div><div class="stat"><div class="num">${items.length}</div><div class="slbl">Trabajos totales</div></div><div class="stat acc"><div class="num">${r1(h)}h</div><div class="slbl">Horas invertidas</div></div></div><div class="card"><h2>Historial — ${esc(cli)}</h2><table><thead><tr><th>Fecha</th><th>Título</th><th>Tipo</th><th>Estado</th><th>Encargado / Editado</th></tr></thead><tbody>${items.length?items.map(it=>`<tr><td>${it.fecha||'—'}</td><td>${esc(it.titulo)}</td><td>${it.tipoLabel}</td><td><span class="st st-${it.estado}">${esc(estadoLabel(it.estado))}</span></td><td>👤 ${esc(it.editor)}</td></tr>`).join(''):'<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">Sin trabajos registrados para este cliente.</td></tr>'}</tbody></table></div>`;
 }
 
 /* ═══ COBERTURAS ═══ */
