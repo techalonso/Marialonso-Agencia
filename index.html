@@ -739,109 +739,66 @@ function showLoading(show,msg){
 
 async function loadFromSupabase(){
   showLoading(true,'Cargando datos...');
-  const qDefs=[
-    ['clients',      ()=>sbc.from('clients').select('*').eq('is_active',true).order('created_at')],
-    ['jobs',         ()=>sbc.from('jobs').select('*').order('created_at',{ascending:false})],
-    ['attachments',  ()=>sbc.from('attachments').select('*').eq('entity_type','job').order('orden')],
-    ['comments',     ()=>sbc.from('comments').select('*').in('entity_type',['job']).order('created_at')],
-    ['users',        ()=>sbc.from('users').select('*').eq('is_active',true).order('created_at')],
-    ['tasks',        ()=>sbc.from('tasks').select('*').order('fecha')],
-    ['task_assignments', ()=>sbc.from('task_assignments').select('*')],
-    ['coverages',    ()=>sbc.from('coverages').select('*').order('fecha')],
-    ['coverage_assignments', ()=>sbc.from('coverage_assignments').select('*')],
-    ['calendar_items', ()=>sbc.from('calendar_items').select('*').order('fecha')],
-    ['config',       ()=>sbc.from('config').select('*')],
-    ['job_assignments', ()=>sbc.from('job_assignments').select('*')],
-  ];
-
-  let settled;
   try{
-    settled=await Promise.allSettled(qDefs.map(q=>q[1]()));
-  }catch(err){
-    console.error('Error de red al cargar Supabase:',err);
-    settled=qDefs.map(()=>({status:'rejected',reason:err}));
-  }
+    const[
+      {data:cliData},{data:jobsData},{data:attData},{data:commData},
+      {data:usrData},{data:tskData},{data:tskAss},{data:covData},
+      {data:covAss},{data:calData},{data:cfgData},{data:jobAssData}
+    ]=await Promise.all([
+      sbc.from('clients').select('*').eq('is_active',true).order('created_at'),
+      sbc.from('jobs').select('*').order('created_at',{ascending:false}),
+      sbc.from('attachments').select('*').eq('entity_type','job').order('orden'),
+      sbc.from('comments').select('*').in('entity_type',['job']).order('created_at'),
+      sbc.from('users').select('*').eq('is_active',true).order('created_at'),
+      sbc.from('tasks').select('*').order('fecha'),
+      sbc.from('task_assignments').select('*'),
+      sbc.from('coverages').select('*').order('fecha'),
+      sbc.from('coverage_assignments').select('*'),
+      sbc.from('calendar_items').select('*').order('fecha'),
+      sbc.from('config').select('*'),
+      sbc.from('job_assignments').select('*'),
+    ]);
 
-  const out={};
-  let failures=0;
-  settled.forEach((r,i)=>{
-    const name=qDefs[i][0];
-    if(r.status==='fulfilled'&&!r.value.error){
-      out[name]=r.value.data||[];
-    }else{
-      failures++;
-      console.error('Error cargando "'+name+'":',r.status==='fulfilled'?r.value.error:r.reason);
-    }
-  });
+    D.clientes=(cliData||[]).map(c=>({id:c.id,nombre:c.nombre,color:c.color||'#e5ddd0',emoji:c.emoji||''}));
 
-  if(failures===qDefs.length){
-    // Fallo total: sin conexión de verdad. Usamos el último respaldo local.
-    const raw=localStorage.getItem(SK);
-    if(raw){Object.assign(D,JSON.parse(raw));}
-    toast('⚠️ Sin conexión — mostrando la última información guardada');
-    showLoading(false);
-    return;
-  }
-  if(failures>0){
-    toast('⚠️ Parte de la información no se pudo actualizar, reintentá en un momento');
-  }
-
-  const cliData=out.clients,jobsData=out.jobs,attData=out.attachments,commData=out.comments,
-        usrData=out.users,tskData=out.tasks,tskAss=out.task_assignments,covData=out.coverages,
-        covAss=out.coverage_assignments,calData=out.calendar_items,cfgData=out.config,jobAssData=out.job_assignments;
-
-  // Cada bloque solo se actualiza si su consulta trajo datos frescos;
-  // si falló, se conserva lo que ya había en D en vez de perderlo.
-  if(cliData){
-    D.clientes=cliData.map(c=>({id:c.id,nombre:c.nombre,color:c.color||'#e5ddd0',emoji:c.emoji||''}));
-  }
-
-  if(jobsData){
-    D.pendientes=jobsData.map(j=>{
+    D.pendientes=(jobsData||[]).map(j=>{
       const links=(attData||[]).filter(a=>a.entity_id===j.id).map(a=>({label:a.label||'',url:a.url||''}));
       const jobCols=(jobAssData||[]).filter(a=>a.job_id===j.id).map(a=>a.user_id);
       const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:fmtSbDate(c.created_at),_sbId:c.id}));
       const desc=j.descripcion?j.titulo+'\n'+j.descripcion:j.titulo;
       return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,lastEditedBy:j.last_edited_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
     });
-  }
 
-  if(usrData){
-    D.colaboradores=usrData.map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
-  }
+    D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
 
-  if(tskData){
-    D.tareas=tskData.map(t=>{
+    D.tareas=(tskData||[]).map(t=>{
       const cols=(tskAss||[]).filter(a=>a.task_id===t.id).map(a=>a.user_id);
       const cli=D.clientes.find(c=>c.id===t.client_id);
       return{id:t.id,titulo:t.titulo,tipo:t.tipo,categoria:t.categoria,cliente:cli?.nombre||'',clienteId:t.client_id,fecha:t.fecha,fechaEntrega:t.fecha_entrega||null,horaInicio:t.hora_inicio||'09:00',horaFin:t.hora_fin||'10:00',colaboradores:cols,estado:t.estado,notas:t.notas||'',lastEditedBy:t.last_edited_by||null};
     });
-  }
 
-  if(covData){
-    D.coberturas=covData.map(cov=>{
+    D.coberturas=(covData||[]).map(cov=>{
       const cols=(covAss||[]).filter(a=>a.coverage_id===cov.id).map(a=>a.user_id);
       const cli=D.clientes.find(c=>c.id===cov.client_id);
       const hor=[cov.hora_inicio,cov.hora_fin].filter(Boolean).join(' – ');
       return{id:cov.id,fecha:cov.fecha,cliente:cli?.nombre||'',clienteId:cov.client_id,evento:cov.evento,ubicacion:cov.ubicacion||'',horario:hor,costoIda:Number(cov.costo_traslado_ida)||0,costoVuelta:Number(cov.costo_traslado_vuelta)||0,colaboradores:cols};
     });
-  }
 
-  if(calData){
     D.efemerides={};
-    calData.forEach(item=>{
+    (calData||[]).forEach(item=>{
       if(!D.efemerides[item.fecha])D.efemerides[item.fecha]=[];
       D.efemerides[item.fecha].push({id:item.id,text:item.titulo,color:item.color_idx||0,tipo:item.tipo||'efemeride',hora:item.hora});
     });
-  }
 
-  if(cfgData){
-    const pinCfg=cfgData.find(c=>c.clave==='admin_pin');
-    D.adminPin=pinCfg?.valor||D.adminPin||'0000';
-  }
+    const pinCfg=(cfgData||[]).find(c=>c.clave==='admin_pin');
+    D.adminPin=pinCfg?.valor||'0000';
 
-  // Backup en localStorage (solo si al menos algo se pudo cargar bien)
-  localStorage.setItem(SK,JSON.stringify(D));
+    // Backup en localStorage
+    localStorage.setItem(SK,JSON.stringify(D));
+  }catch(err){
+    console.error('Error cargando Supabase:',err);
+    throw err; // propagar para que el llamador reintente, sin modo offline
+  }
   showLoading(false);
 }
 
@@ -938,17 +895,24 @@ function sbSaveUser(u){sbSave('users',{id:u.id,nombre:u.nombre,pin_hash:u.pin,ro
 function sbDelUser(id){if(!sbc)return;sbc.from('users').delete().eq('id',id).then(({error})=>{if(error)console.error('sbDelUser error',error);});}
 function sbSaveAdminPin(pin){sbSave('config',{clave:'admin_pin',valor:pin});}
 
+let _realtimeActivo=false;
+function refrescarVistaActual(){
+  const v=document.querySelector('.view.active')?.id;
+  const map={'view-agenda':renderAgenda,'view-semana':()=>{renderSemana();if(ST.role==='admin')renderCWk();},'view-pendientes':renderPend,'view-reportes':()=>{const s=document.getElementById('rptSel');if(s&&s.value)renderReporte();},'view-coberturas':renderCob,'view-colaboradores':renderColabs};
+  map[v]?.();
+}
 function subscribeRealtime(){
-  if(!sbc)return;
-  sbc.channel('ma-sync').on('postgres_changes',{event:'*',schema:'public'},(payload)=>{
-    if(payload.table==='calendar_items'||payload.table==='jobs'||payload.table==='clients'||payload.table==='coverages'||payload.table==='tasks'||payload.table==='comments'||payload.table==='attachments'){
-      loadFromSupabase().then(()=>{
-        const v=document.querySelector('.view.active')?.id;
-        const map={'view-agenda':renderAgenda,'view-semana':()=>{renderSemana();if(ST.role==='admin')renderCWk();},'view-pendientes':renderPend,'view-reportes':()=>{},'view-coberturas':renderCob,'view-colaboradores':renderColabs};
-        map[v]?.();
-      });
-    }
+  if(!sbc||_realtimeActivo)return;
+  _realtimeActivo=true;
+  sbc.channel('ma-sync').on('postgres_changes',{event:'*',schema:'public'},()=>{
+    loadFromSupabase().then(refrescarVistaActual).catch(e=>console.error('realtime reload',e));
   }).subscribe();
+  // Refrescar al volver a la pestaña (por si se perdió algún cambio en tiempo real)
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden&&ST.role){
+      loadFromSupabase().then(refrescarVistaActual).catch(e=>console.error('visibility reload',e));
+    }
+  });
 }
 
 /* ═══ DATA ═══ */
@@ -1008,15 +972,7 @@ async function pv(){
   }catch(err){
     showLoading(false);
     console.error('Login error:',err);
-    // Fallback offline: check localStorage
-    const raw=localStorage.getItem(SK);
-    if(raw){
-      const cached=JSON.parse(raw);
-      if(cached.adminPin===pb){Object.assign(D,cached);doLogin('admin',null);toast('⚠️ Modo offline');return;}
-      const col=cached.colaboradores?.find(c=>c.pin===pb);
-      if(col){Object.assign(D,cached);doLogin('colab',col.id);toast('⚠️ Modo offline');return;}
-    }
-    document.getElementById('pinErr').textContent='Error de conexión. Verificá tu internet.';
+    document.getElementById('pinErr').textContent='No se pudo conectar. Revisá tu internet y volvé a intentar.';
     pb='';updDots();
   }
 }
@@ -1026,10 +982,10 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Backspace')pd();
   else if(e.key==='Enter')pv();
 });
-const SESSION_KEY='ma_session_v1';
 function doLogin(role,cid){
   ST={role,cid};
-  localStorage.setItem(SESSION_KEY,JSON.stringify({role,cid}));
+  // Guardar sesión para que persista al refrescar
+  try{localStorage.setItem('ma_session',JSON.stringify({role,cid}));}catch(e){}
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').style.display='block';
   const col=cid?D.colaboradores.find(c=>c.id===cid):null;
@@ -1053,29 +1009,13 @@ function doLogin(role,cid){
   renderAgenda();
 }
 function logout(){
+  try{localStorage.removeItem('ma_session');}catch(e){}
   ST={role:null,cid:null};pb='';updDots();
-  localStorage.removeItem(SESSION_KEY);
   document.getElementById('pinErr').textContent='';
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('app').style.display='none';
   document.getElementById('fabWrap').style.display='none';
 }
-
-/* ═══ RESTAURAR SESIÓN AL REFRESCAR ═══ */
-(function restoreSession(){
-  if(location.hash.startsWith('#pend/'))return; // es un link de portal de cliente, no tocar
-  let saved=null;
-  try{saved=JSON.parse(localStorage.getItem(SESSION_KEY)||'null');}catch(e){}
-  if(!saved||!saved.role)return; // no había sesión activa: se queda en la pantalla de PIN
-  document.getElementById('loginScreen').style.display='none';
-  initSupabase();
-  showLoading(true,'Actualizando...');
-  loadFromSupabase().then(()=>{
-    showLoading(false);
-    doLogin(saved.role,saved.cid||null);
-    subscribeRealtime();
-  });
-})();
 
 /* ═══ NAV ═══ */
 ['adminNav','colabNav'].forEach(id=>{
@@ -1743,12 +1683,16 @@ function exitClientPreview(){
   renderPend();
 }
 
-/* Detectar link de cliente al abrir */
-(function(){
+/* Arranque: detectar portal de cliente o restaurar sesión */
+(async function(){
   const hash=location.hash;
+  // 1. Portal de cliente (link público)
   if(hash.startsWith('#pend/')){
     const cid=hash.slice(6);
-    // Ocultar login, mostrar app en modo portal
+    initSupabase();
+    showLoading(true,'Cargando…');
+    try{await loadFromSupabase();}catch(e){console.error(e);}
+    showLoading(false);
     document.getElementById('loginScreen').style.display='none';
     document.getElementById('app').style.display='block';
     document.getElementById('adminNav').style.display='none';
@@ -1759,6 +1703,30 @@ function exitClientPreview(){
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     document.getElementById('view-portal-client').classList.add('active');
     renderPortalClient(cid);
+    return;
+  }
+  // 2. Restaurar sesión guardada (persiste al refrescar)
+  let sesion=null;
+  try{sesion=JSON.parse(localStorage.getItem('ma_session'));}catch(e){}
+  if(sesion&&sesion.role){
+    initSupabase();
+    showLoading(true,'Cargando tu información…');
+    try{
+      await loadFromSupabase();
+      showLoading(false);
+      // Verificar que el colaborador siga existiendo
+      if(sesion.role==='colab'){
+        const existe=D.colaboradores.find(c=>c.id===sesion.cid);
+        if(!existe){localStorage.removeItem('ma_session');return;}
+      }
+      doLogin(sesion.role,sesion.cid);
+      subscribeRealtime();
+    }catch(e){
+      console.error('Error restaurando sesión:',e);
+      showLoading(false);
+      // No entrar en modo offline: volver al login para reintentar
+      localStorage.removeItem('ma_session');
+    }
   }
 })();
 </script>
