@@ -1127,8 +1127,17 @@ function renderAgenda(){
         el.onclick=(e)=>{e.stopPropagation();if(ST.role==='admin')openPendModal(null,p.id);};
         cell.appendChild(el);
       });
-      // Tareas con fecha de entrega en este día
-      D.tareas.filter(t=>t.fechaEntrega===ds).forEach(t=>{
+      // Tareas agendadas en este día (por su fecha)
+      D.tareas.filter(t=>t.fecha===ds).forEach(t=>{
+        const cargo=(t.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');
+        const el=document.createElement('div');el.className='pend-ag';el.style.background='#eef6ff';el.style.borderLeftColor='var(--azul)';
+        el.textContent=`📋 ${t.titulo.slice(0,16)}${t.titulo.length>16?'…':''}`;
+        el.title=`${t.titulo}${t.cliente?' · '+t.cliente:''}${t.horaInicio?' · '+t.horaInicio+'–'+t.horaFin:''}${cargo?' · '+cargo:''}`;
+        el.onclick=(e)=>{e.stopPropagation();if(ST.role==='admin')openTaskModal(t.id);};
+        cell.appendChild(el);
+      });
+      // Tareas con fecha de entrega en este día (distinta al día agendado)
+      D.tareas.filter(t=>t.fechaEntrega===ds&&t.fecha!==ds).forEach(t=>{
         const el=document.createElement('div');el.className='pend-ag';el.style.background='#fff4e6';el.style.borderLeftColor='var(--naranja)';
         el.textContent=`⏰ ${t.titulo.slice(0,18)}${t.titulo.length>18?'…':''}`;
         el.title=`Entrega: ${t.titulo}${t.cliente?' · '+t.cliente:''}`;
