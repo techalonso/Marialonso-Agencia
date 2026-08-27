@@ -719,6 +719,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ═══ SUPABASE ═══ */
 const SB_URL='https://jygtlpfmihggyeypmipe.supabase.co';
@@ -943,8 +944,10 @@ function pk(d){if(pb.length>=4)return;pb+=d;updDots();if(pb.length===4)setTimeou
 function pd(){pb=pb.slice(0,-1);updDots();}
 function updDots(){for(let i=0;i<4;i++)document.getElementById('pd'+i).classList.toggle('filled',i<pb.length);}
 async function pv(){
-  initSupabase();
   showLoading(true,'Verificando PIN...');
+  let intentosL=0;
+  while(!window.supabase&&intentosL<50){await new Promise(r=>setTimeout(r,100));intentosL++;}
+  initSupabase();
   try{
     const{data:cfgData}=await sbc.from('config').select('valor').eq('clave','admin_pin').maybeSingle();
     const adminPin=cfgData?.valor||'0000';
@@ -1689,6 +1692,8 @@ function exitClientPreview(){
   // 1. Portal de cliente (link público)
   if(hash.startsWith('#pend/')){
     const cid=hash.slice(6);
+    let intentosP=0;
+    while(!window.supabase&&intentosP<50){await new Promise(r=>setTimeout(r,100));intentosP++;}
     initSupabase();
     showLoading(true,'Cargando…');
     try{await loadFromSupabase();}catch(e){console.error(e);}
@@ -1709,6 +1714,9 @@ function exitClientPreview(){
   let sesion=null;
   try{sesion=JSON.parse(localStorage.getItem('ma_session'));}catch(e){}
   if(sesion&&sesion.role){
+    // Esperar a que la librería de Supabase esté cargada (hasta 5 segundos)
+    let intentos=0;
+    while(!window.supabase&&intentos<50){await new Promise(r=>setTimeout(r,100));intentos++;}
     initSupabase();
     showLoading(true,'Cargando tu información…');
     try{
@@ -1730,6 +1738,5 @@ function exitClientPreview(){
   }
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </body>
 </html>
