@@ -904,6 +904,15 @@ function sbDelUser(id){if(!sbc)return;sbc.from('users').delete().eq('id',id).the
 function sbSaveAdminPin(pin){sbSave('config',{clave:'admin_pin',valor:pin});}
 
 let _realtimeActivo=false;
+function refrescarTodo(){
+  // Refresca TODAS las vistas para que los cambios se vean al instante
+  try{if(typeof renderPend==='function')renderPend();}catch(e){}
+  try{if(typeof renderSemana==='function')renderSemana();}catch(e){}
+  try{if(ST.role==='admin'&&typeof renderCWk==='function')renderCWk();}catch(e){}
+  try{if(typeof renderAgenda==='function')renderAgenda();}catch(e){}
+  try{if(typeof renderCob==='function')renderCob();}catch(e){}
+  try{const s=document.getElementById('rptSel');if(s&&s.value&&typeof renderReporte==='function')renderReporte();}catch(e){}
+}
 function refrescarVistaActual(){
   const v=document.querySelector('.view.active')?.id;
   const map={'view-agenda':renderAgenda,'view-semana':()=>{renderSemana();if(ST.role==='admin')renderCWk();},'view-pendientes':renderPend,'view-reportes':()=>{const s=document.getElementById('rptSel');if(s&&s.value)renderReporte();},'view-coberturas':renderCob,'view-colaboradores':renderColabs};
@@ -1302,10 +1311,10 @@ function saveTask(){
   const cols=[...document.querySelectorAll('#t_cols .chip.on')].map(c=>c.dataset.id);
   const task={id:eTId||uid(),titulo:tit,tipo,categoria:cat,cliente:document.getElementById('t_cli').value.trim(),fecha:document.getElementById('t_fec').value,fechaEntrega:document.getElementById('t_fecEntrega').value||null,horaInicio:document.getElementById('t_hi').value,horaFin:document.getElementById('t_hf').value,colaboradores:cols,estado:document.getElementById('t_est').value,notas:document.getElementById('t_not').value.trim(),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid)};
   if(eTId)D.tareas=D.tareas.map(t=>t.id===eTId?task:t);else D.tareas.push(task);
-  sd();sbSaveTask(task);closeM('taskBg');renderSemana();renderCWk();
+  sd();sbSaveTask(task);closeM('taskBg');refrescarTodo();
   if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
 }
-function delTask(){if(!confirm('¿Eliminar tarea?'))return;const tId=eTId;D.tareas=D.tareas.filter(t=>t.id!==tId);sd();sbDelTask(tId);closeM('taskBg');renderSemana();renderCWk();}
+function delTask(){if(!confirm('¿Eliminar tarea?'))return;const tId=eTId;D.tareas=D.tareas.filter(t=>t.id!==tId);sd();sbDelTask(tId);closeM('taskBg');refrescarTodo();}
 document.getElementById('taskBg').addEventListener('click',e=>{if(e.target.id==='taskBg')closeM('taskBg');});
 
 /* ═══ PENDIENTES ═══ */
@@ -1449,9 +1458,9 @@ function savePend(){
   const colsAsignados=[...document.querySelectorAll('#pm_cols .chip.on')].map(ch=>ch.dataset.id);
   const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date())};
   if(pid)D.pendientes=D.pendientes.map(p=>p.id===pid?obj:p);else D.pendientes.push(obj);
-  sd();sbSaveJob(obj);closeM('pendBg');renderPend();renderSemana();if(ST.role==='admin')renderCWk();if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
+  sd();sbSaveJob(obj);closeM('pendBg');refrescarTodo();
 }
-function delPend(){if(!confirm('¿Eliminar?'))return;const pid=document.getElementById('pm_id').value;D.pendientes=D.pendientes.filter(p=>p.id!==pid);sd();sbDelJob(pid);closeM('pendBg');renderPend();}
+function delPend(){if(!confirm('¿Eliminar?'))return;const pid=document.getElementById('pm_id').value;D.pendientes=D.pendientes.filter(p=>p.id!==pid);sd();sbDelJob(pid);closeM('pendBg');refrescarTodo();}
 document.getElementById('pendBg').addEventListener('click',e=>{if(e.target.id==='pendBg')closeM('pendBg');});
 function openComm(pid){document.getElementById('cm_pid').value=pid;document.getElementById('cm_txt').value='';document.getElementById('commBg').classList.add('open');setTimeout(()=>document.getElementById('cm_txt').focus(),50);}
 function saveComm(){const pid=document.getElementById('cm_pid').value,tx=document.getElementById('cm_txt').value.trim();if(!tx)return;const p=D.pendientes.find(x=>x.id===pid);if(!p)return;if(!p.comentarios)p.comentarios=[];const col=ST.cid?D.colaboradores.find(c=>c.id===ST.cid):null;const comm={text:tx,autor:ST.role==='admin'?'Admin':(col?.nombre||'Colaborador'),fecha:fmtD(new Date())};p.comentarios.push(comm);sd();sbSaveComment('job',pid,comm,ST.role==='admin'?'admin':'collaborator');closeM('commBg');renderPend();}
@@ -1542,10 +1551,10 @@ function saveCob(){
   const cob={id:eCobId||uid(),fecha:document.getElementById('cb_fec').value,cliente:cliObj?.nombre||'',clienteId:cliId,evento:evt,ubicacion:document.getElementById('cb_ubi').value.trim(),horario:document.getElementById('cb_hor').value.trim(),costoIda:Number(document.getElementById('cb_ida').value)||0,costoVuelta:Number(document.getElementById('cb_vta').value)||0,colaboradores:cols};
   if(ST.role==='colab'&&!cob.colaboradores.includes(ST.cid))cob.colaboradores.push(ST.cid);
   if(eCobId)D.coberturas=D.coberturas.map(c=>c.id===eCobId?cob:c);else D.coberturas.push(cob);
-  sd();sbSaveCoverage(cob);closeM('cobBg');renderCob();
+  sd();sbSaveCoverage(cob);closeM('cobBg');refrescarTodo();
   if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
 }
-function delCob(){if(!confirm('¿Eliminar cobertura?'))return;const cId=eCobId;D.coberturas=D.coberturas.filter(c=>c.id!==cId);sd();sbDelCoverage(cId);closeM('cobBg');renderCob();}
+function delCob(){if(!confirm('¿Eliminar cobertura?'))return;const cId=eCobId;D.coberturas=D.coberturas.filter(c=>c.id!==cId);sd();sbDelCoverage(cId);closeM('cobBg');refrescarTodo();}
 document.getElementById('cobBg').addEventListener('click',e=>{if(e.target.id==='cobBg')closeM('cobBg');});
 
 /* ═══ COLABORADORES ═══ */
