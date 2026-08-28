@@ -470,7 +470,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
       </div>
       <div class="card">
         <h2>Equipo</h2>
-        <table><thead><tr><th>Nombre</th><th>PIN (4 dígitos)</th><th></th><th></th></tr></thead>
+        <table><thead><tr><th>Nombre</th><th>PIN (4 dígitos)</th><th></th><th></th><th></th></tr></thead>
         <tbody id="tblColabs"></tbody></table>
       </div>
       <div class="card" id="archivadosWrap" style="display:none;">
@@ -1589,6 +1589,7 @@ function renderColabs(){
     <td><input type="text" maxlength="4" value="${c.pin||''}" placeholder="0000" onchange="updC('${c.id}','pin',this.value)" oninput="this.value=this.value.replace(/\\D/g,'')" style="width:80px;"></td>
     <td><button class="btn btn-yellow btn-sm" onclick="previewAs('${c.id}')">👁 Ver como ${esc(c.nombre)}</button></td>
     <td><button class="btn btn-ghost btn-sm" onclick="archivarColab('${c.id}')" title="Da de baja al colaborador pero conserva su historial">📦 Dar de baja</button></td>
+    <td><button class="btn btn-danger btn-sm" onclick="eliminarDefinitivo('${c.id}')" title="Elimina al colaborador definitivamente (para casos de error)">🗑 Eliminar</button></td>
   </tr>`).join('');
   // Sección de archivados (solo si hay)
   const archWrap=document.getElementById('archivadosWrap');
@@ -1675,10 +1676,18 @@ function reactivarColab(id){
 }
 function eliminarDefinitivo(id){
   const c=D.colaboradores.find(x=>x.id===id);if(!c)return;
-  if(!confirm(`⚠️ ATENCIÓN: Vas a eliminar DEFINITIVAMENTE a ${c.nombre}.\n\nEsto borrará al colaborador y TODO su historial de trabajos, tareas y coberturas. Esta acción NO se puede deshacer.\n\n¿Continuar?`))return;
-  if(!confirm(`Confirmá una vez más: ¿eliminar para siempre a ${c.nombre} y todo su registro?`))return;
+  // Detectar si tiene historial (trabajos, tareas o coberturas asignadas)
+  const tieneHistorial=D.tareas.some(t=>(t.colaboradores||[]).includes(id))||D.pendientes.some(p=>(p.colaboradores||[]).includes(id))||D.coberturas.some(cv=>(cv.colaboradores||[]).includes(id));
+  let msg;
+  if(tieneHistorial){
+    msg=`⚠️ ATENCIÓN: ${c.nombre} tiene trabajos, tareas o coberturas asignadas.\n\nSi lo eliminás, se perderá el registro de qué hizo. Si solo querés que deje de aparecer en la operación, usá "Dar de baja" (conserva el historial).\n\n¿Eliminar igual de forma definitiva?`;
+  } else {
+    msg=`¿Eliminar definitivamente a ${c.nombre}?\n\nEste colaborador no tiene trabajos asignados, así que no se pierde ningún historial. Ideal si fue creado por error.`;
+  }
+  if(!confirm(msg))return;
+  if(tieneHistorial&&!confirm(`Confirmá una vez más: ¿eliminar para siempre a ${c.nombre} y todo su registro?`))return;
   D.colaboradores=D.colaboradores.filter(x=>x.id!==id);sd();sbDelUser(id);renderColabs();
-  toast(`🗑 ${c.nombre} fue eliminado definitivamente.`);
+  toast(`🗑 ${c.nombre} fue eliminado.`);
 }
 function saveAdminPin(){const p=document.getElementById('adminPinInp').value;if(!/^\d{4}$/.test(p)){alert('El PIN debe ser exactamente 4 dígitos numéricos.');return;}D.adminPin=p;sd();sbSaveAdminPin(p);document.getElementById('adminPinShow').textContent=p;toast('✓ PIN de admin actualizado');}
 
