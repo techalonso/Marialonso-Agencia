@@ -473,6 +473,12 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
         <table><thead><tr><th>Nombre</th><th>PIN (4 dígitos)</th><th></th><th></th></tr></thead>
         <tbody id="tblColabs"></tbody></table>
       </div>
+      <div class="card" id="archivadosWrap" style="display:none;">
+        <h2>📦 Colaboradores dados de baja</h2>
+        <p style="font-size:12.5px;color:var(--gris2);margin:-4px 0 12px;">Su historial de trabajos se conserva. Podés reactivarlos o eliminarlos definitivamente.</p>
+        <table><thead><tr><th>Nombre</th><th></th><th></th></tr></thead>
+        <tbody id="tblArchivados"></tbody></table>
+      </div>
     </section>
 
     <!-- PORTAL CLIENTE -->
@@ -756,7 +762,7 @@ async function loadFromSupabase(){
       sbc.from('jobs').select('*').order('created_at',{ascending:false}),
       sbc.from('attachments').select('*').eq('entity_type','job').order('orden'),
       sbc.from('comments').select('*').in('entity_type',['job']).order('created_at'),
-      sbc.from('users').select('*').eq('is_active',true).order('created_at'),
+      sbc.from('users').select('*').order('created_at'),
       sbc.from('tasks').select('*').order('fecha'),
       sbc.from('task_assignments').select('*'),
       sbc.from('coverages').select('*').order('fecha'),
@@ -776,7 +782,7 @@ async function loadFromSupabase(){
       return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,origen:j.origen||'agencia',lastEditedBy:j.last_edited_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
     });
 
-    D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color}));
+    D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color,activo:u.is_active!==false}));
 
     D.tareas=(tskData||[]).map(t=>{
       const cols=(tskAss||[]).filter(a=>a.task_id===t.id).map(a=>a.user_id);
@@ -901,6 +907,8 @@ function sbToggleCovAss(covId,userId,adding){
 
 function sbSaveUser(u){sbSave('users',{id:u.id,nombre:u.nombre,pin_hash:u.pin,rol:'collaborator',is_active:true});}
 function sbDelUser(id){if(!sbc)return;sbc.from('users').delete().eq('id',id).then(({error})=>{if(error)console.error('sbDelUser error',error);});}
+function sbArchivarUser(id){if(!sbc)return;sbc.from('users').update({is_active:false}).eq('id',id).then(({error})=>{if(error)console.error('sbArchivarUser error',error);});}
+function sbReactivarUser(id){if(!sbc)return;sbc.from('users').update({is_active:true}).eq('id',id).then(({error})=>{if(error)console.error('sbReactivarUser error',error);});}
 function sbSaveAdminPin(pin){sbSave('config',{clave:'admin_pin',valor:pin});}
 
 let _realtimeActivo=false;
@@ -1166,7 +1174,7 @@ function renderAgenda(){
       });
       // Tareas agendadas en este día (por su fecha)
       D.tareas.filter(t=>t.fecha===ds).forEach(t=>{
-        const cargo=(t.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');
+        const cargo=(t.colaboradores||[]).map(id=>nombreColab(id)).filter(x=>x!=='—').join(', ');
         const el=document.createElement('div');el.className='pend-ag';el.style.background='#eef6ff';el.style.borderLeftColor='var(--azul)';
         el.textContent=`📋 ${t.titulo.slice(0,16)}${t.titulo.length>16?'…':''}`;
         el.title=`${t.titulo}${t.cliente?' · '+t.cliente:''}${t.horaInicio?' · '+t.horaInicio+'–'+t.horaFin:''}${cargo?' · '+cargo:''}`;
@@ -1257,13 +1265,13 @@ function mkEfChip(ef){
   const t=tipos[ef.tipo||'efemeride']||tipos.efemeride;
   return`<div class="tc-chip" style="border-left-color:${t.bd};background:${t.bg};"><div class="tc-title">${t.ic} ${esc(ef.text)}</div><div class="tc-meta">${t.lbl}${ef.hora?' · '+ef.hora:''}</div></div>`;
 }
-function mkCobChip(cv){const cargo=(cv.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip" data-cobid="${cv.id}" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="tc-title">🎬 ${esc(cv.evento)}</div><div class="tc-meta">${cv.cliente?esc(cv.cliente):''}${cv.horario?' · '+esc(cv.horario):''}${cargo?' · 👤 '+esc(cargo):' · Sin asignar'}</div></div>`;}
-function mkChip(t){const c=cH(t.fecha,t.horaInicio,t.horaFin);const nn=t.colaboradores.map(id=>D.colaboradores.find(c=>c.id===id)?.nombre||'').filter(Boolean).join(', ');return`<div class="tc-chip${c.extra>0?' extra':''}" data-id="${t.id}"><div class="tc-title">${esc(t.titulo)}${t.tipo==='proyecto'?'<span class="badge badge-p">PROY</span>':''}${c.extra>0?'<span class="badge badge-x">EXTRA</span>':''}</div><div class="tc-meta">${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}${nn?' · '+esc(nn):''}</div></div>`;}
-function mkTaskDeadlineChip(t){const cli=D.clientes.find(x=>x.nombre===t.cliente);const cargo=(t.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip" data-id="${t.id}" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="tc-title">⏰ ${esc(t.titulo)}</div><div class="tc-meta">Entrega${t.cliente?' · '+esc(t.cliente):''}${cargo?' · 👤 '+esc(cargo):''}</div></div>`;}
-function mkPendChip(p){const cli=D.clientes.find(x=>x.id===p.clienteId);const titulo=p.desc.split('\n')[0];const cargo=(p.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');return`<div class="tc-chip pend-chip" data-pendid="${p.id}" style="border-left-color:var(--rosa2);background:#fdeef0;"><div class="tc-title">📌 ${esc(titulo)}</div><div class="tc-meta">Entrega${cli?' · '+esc(cli.nombre):''}${cargo?' · 👤 '+esc(cargo):''}</div></div>`;}
+function mkCobChip(cv){const cargo=(cv.colaboradores||[]).map(id=>nombreColab(id)).filter(x=>x!=='—').join(', ');return`<div class="tc-chip" data-cobid="${cv.id}" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="tc-title">🎬 ${esc(cv.evento)}</div><div class="tc-meta">${cv.cliente?esc(cv.cliente):''}${cv.horario?' · '+esc(cv.horario):''}${cargo?' · 👤 '+esc(cargo):' · Sin asignar'}</div></div>`;}
+function mkChip(t){const c=cH(t.fecha,t.horaInicio,t.horaFin);const nn=t.colaboradores.map(id=>nombreColab(id)).filter(x=>x!=='—').join(', ');return`<div class="tc-chip${c.extra>0?' extra':''}" data-id="${t.id}"><div class="tc-title">${esc(t.titulo)}${t.tipo==='proyecto'?'<span class="badge badge-p">PROY</span>':''}${c.extra>0?'<span class="badge badge-x">EXTRA</span>':''}</div><div class="tc-meta">${t.horaInicio}–${t.horaFin}${t.cliente?' · '+esc(t.cliente):''}${nn?' · '+esc(nn):''}</div></div>`;}
+function mkTaskDeadlineChip(t){const cli=D.clientes.find(x=>x.nombre===t.cliente);const cargo=(t.colaboradores||[]).map(id=>nombreColab(id)).filter(x=>x!=='—').join(', ');return`<div class="tc-chip" data-id="${t.id}" style="border-left-color:var(--naranja);background:#fff4e6;"><div class="tc-title">⏰ ${esc(t.titulo)}</div><div class="tc-meta">Entrega${t.cliente?' · '+esc(t.cliente):''}${cargo?' · 👤 '+esc(cargo):''}</div></div>`;}
+function mkPendChip(p){const cli=D.clientes.find(x=>x.id===p.clienteId);const titulo=p.desc.split('\n')[0];const cargo=(p.colaboradores||[]).map(id=>nombreColab(id)).filter(x=>x!=='—').join(', ');return`<div class="tc-chip pend-chip" data-pendid="${p.id}" style="border-left-color:var(--rosa2);background:#fdeef0;"><div class="tc-title">📌 ${esc(titulo)}</div><div class="tc-meta">Entrega${cli?' · '+esc(cli.nombre):''}${cargo?' · 👤 '+esc(cargo):''}</div></div>`;}
 function renderCWk(){
   const days=[];for(let i=0;i<6;i++){const d=new Date(cwS);d.setDate(d.getDate()+i);days.push(fmtD(d));}
-  document.getElementById('colabWkGrid').innerHTML=D.colaboradores.map(col=>{
+  document.getElementById('colabWkGrid').innerHTML=colabsActivos().map(col=>{
     // Tareas asignadas a este colaborador esta semana
     const tt=D.tareas.filter(t=>t.colaboradores.includes(col.id)&&days.includes(t.fecha));
     // Trabajos (Pendientes 360) a cargo de este colaborador con entrega esta semana
@@ -1295,7 +1303,7 @@ function openTaskModal(id){
   document.getElementById('taskTitle').textContent=id?'Editar tarea':'Nueva tarea';
   document.getElementById('tDel').style.display=id?'inline-flex':'none';
   const w=document.getElementById('t_cols');
-  w.innerHTML=D.colaboradores.map(c=>`<div class="chip" data-id="${c.id}">${esc(c.nombre)}</div>`).join('');
+  w.innerHTML=colabsActivos().map(c=>`<div class="chip" data-id="${c.id}">${esc(c.nombre)}</div>`).join('');
   w.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>ch.classList.toggle('on')));
   document.getElementById('t_cli').innerHTML='<option value="">— Seleccionar cliente —</option>'+D.clientes.map(cl=>`<option value="${esc(cl.nombre)}">${esc(cl.emoji?cl.emoji+' ':'')}${esc(cl.nombre)}</option>`).join('');
   if(id){const t=D.tareas.find(x=>x.id===id);document.getElementById('t_tit').value=t.titulo;document.getElementById('t_cli').value=t.cliente;document.getElementById('t_fec').value=t.fecha;document.getElementById('t_fecEntrega').value=t.fechaEntrega||'';document.getElementById('t_hi').value=t.horaInicio;document.getElementById('t_hf').value=t.horaFin;document.getElementById('t_est').value=t.estado;document.getElementById('t_not').value=t.notas||'';selTipo(t.tipo);if(t.categoria)selP('t_cat',t.categoria);t.colaboradores.forEach(cid=>{const el=w.querySelector(`[data-id="${cid}"]`);if(el)el.classList.add('on');});}
@@ -1336,7 +1344,7 @@ function piHTML(p,num){
     ?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">${p.links.map(l=>`<a class="pi-link" href="${esc(l.url)}" target="_blank">🔗 ${esc(l.label||'Link')}</a>`).join('')}</div>`
     :(p.link?`<a class="pi-link" href="${esc(p.link)}" target="_blank">📂 Ver archivo</a>`:'');
   let creador='';
-  const aCargo=(p.colaboradores||[]).map(id=>D.colaboradores.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');
+  const aCargo=(p.colaboradores||[]).map(id=>nombreColab(id)).filter(x=>x!=='—').join(', ');
   if(ST.role==='admin'){
     let parts=[];
     if(aCargo)parts.push(`👤 A cargo: ${esc(aCargo)}`);
@@ -1439,7 +1447,7 @@ function openPendModal(cid,pid){
   document.getElementById('pm_fecha').value=p?.fechaEntrega||'';
   // Colaboradores a cargo
   const pcw=document.getElementById('pm_cols');
-  pcw.innerHTML=D.colaboradores.map(col=>`<div class="chip" data-id="${col.id}">${esc(col.nombre)}</div>`).join('');
+  pcw.innerHTML=colabsActivos().map(col=>`<div class="chip" data-id="${col.id}">${esc(col.nombre)}</div>`).join('');
   pcw.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>ch.classList.toggle('on')));
   const asignados=p?.colaboradores||[];
   asignados.forEach(cid2=>{const el=pcw.querySelector(`[data-id="${cid2}"]`);if(el)el.classList.add('on');});
@@ -1473,12 +1481,16 @@ function renderRpt(){
   sel.innerHTML=cls.length?cls.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`):'<option>Sin clientes en tareas</option>';
   renderReporte();
 }
+function colabsActivos(){return D.colaboradores.filter(c=>c.activo!==false);}
+function esArchivado(id){const c=D.colaboradores.find(x=>x.id===id);return c&&c.activo===false;}
+function nombreColab(id){const c=D.colaboradores.find(x=>x.id===id);if(!c)return '—';return c.activo===false?`${c.nombre} (ex-colaborador)`:c.nombre;}
 function editorNombre(val){
   if(!val)return '—';
   if(val==='__admin__')return 'Admin';
   if(val==='__client__')return 'Cliente';
   const u=D.colaboradores.find(c=>c.id===val);
-  return u?u.nombre:'—';
+  if(!u)return '—';
+  return u.activo===false?`${u.nombre} (ex-colaborador)`:u.nombre;
 }
 function renderReporte(){
   const cli=document.getElementById('rptSel').value,body=document.getElementById('rptBody');
@@ -1535,7 +1547,7 @@ function openCobModal(id){
   document.getElementById('cobTitle').textContent=id?'Editar cobertura':'Nueva cobertura';
   document.getElementById('cobDel').style.display=id&&ST.role==='admin'?'inline-flex':'none';
   const w=document.getElementById('cb_cols');
-  w.innerHTML=D.colaboradores.map(c=>`<div class="chip" data-id="${c.id}">${esc(c.nombre)}</div>`).join('');
+  w.innerHTML=colabsActivos().map(c=>`<div class="chip" data-id="${c.id}">${esc(c.nombre)}</div>`).join('');
   w.querySelectorAll('.chip').forEach(ch=>ch.addEventListener('click',()=>ch.classList.toggle('on')));
   document.getElementById('cobColsF').style.display=ST.role==='admin'?'block':'none';
   if(id){const c=D.coberturas.find(x=>x.id===id);document.getElementById('cb_fec').value=c.fecha;document.getElementById('cb_cli').value=c.clienteId||'';document.getElementById('cb_evt').value=c.evento;document.getElementById('cb_ubi').value=c.ubicacion||'';document.getElementById('cb_hor').value=c.horario||'';document.getElementById('cb_ida').value=c.costoIda||'';document.getElementById('cb_vta').value=c.costoVuelta||'';(c.colaboradores||[]).forEach(cid=>{const el=w.querySelector(`[data-id="${cid}"]`);if(el)el.classList.add('on');});}
@@ -1561,12 +1573,29 @@ document.getElementById('cobBg').addEventListener('click',e=>{if(e.target.id==='
 function renderColabs(){
   document.getElementById('adminPinInp').value='';
   document.getElementById('adminPinShow').textContent=D.adminPin;
-  document.getElementById('tblColabs').innerHTML=D.colaboradores.map(c=>`<tr>
+  const activos=D.colaboradores.filter(c=>c.activo!==false);
+  const archivados=D.colaboradores.filter(c=>c.activo===false);
+  // Tabla de activos
+  document.getElementById('tblColabs').innerHTML=activos.map(c=>`<tr>
     <td><input value="${esc(c.nombre)}" onchange="updC('${c.id}','nombre',this.value)" style="border:none;background:transparent;font-weight:700;padding:3px;font-family:var(--font);width:auto;"></td>
     <td><input type="text" maxlength="4" value="${c.pin||''}" placeholder="0000" onchange="updC('${c.id}','pin',this.value)" oninput="this.value=this.value.replace(/\\D/g,'')" style="width:80px;"></td>
     <td><button class="btn btn-yellow btn-sm" onclick="previewAs('${c.id}')">👁 Ver como ${esc(c.nombre)}</button></td>
-    <td><button class="btn btn-danger btn-sm" onclick="delC('${c.id}')">Eliminar</button></td>
+    <td><button class="btn btn-ghost btn-sm" onclick="archivarColab('${c.id}')" title="Da de baja al colaborador pero conserva su historial">📦 Dar de baja</button></td>
   </tr>`).join('');
+  // Sección de archivados (solo si hay)
+  const archWrap=document.getElementById('archivadosWrap');
+  if(archWrap){
+    if(archivados.length){
+      archWrap.style.display='block';
+      document.getElementById('tblArchivados').innerHTML=archivados.map(c=>`<tr style="opacity:.7;">
+        <td style="font-weight:700;padding:6px;">${esc(c.nombre)} <span style="font-size:10px;color:var(--gris2);font-weight:600;">(ex-colaborador)</span></td>
+        <td><button class="btn btn-ghost btn-sm" onclick="reactivarColab('${c.id}')" title="Volver a activar">↩️ Reactivar</button></td>
+        <td><button class="btn btn-danger btn-sm" onclick="eliminarDefinitivo('${c.id}')" title="Borra al colaborador y todo su historial">🗑 Eliminar definitivo</button></td>
+      </tr>`).join('');
+    } else {
+      archWrap.style.display='none';
+    }
+  }
 }
 
 let _prevState=null;
@@ -1624,7 +1653,25 @@ function exitPreview(){
 }
 function updC(id,f,v){const c=D.colaboradores.find(x=>x.id===id);if(c){c[f]=v;sd();sbSaveUser(c);}}
 function addColab(){const n=prompt('Nombre:');if(!n)return;let p=prompt('PIN de 4 dígitos:','0000');while(!p||!/^\d{4}$/.test(p)){p=prompt('PIN debe ser 4 dígitos exactos:','0000');if(p===null)return;}const u={id:uid(),nombre:n,valorHoraExtra:25000,pin:p};D.colaboradores.push(u);sd();sbSaveUser(u);renderColabs();}
-function delC(id){if(!confirm('¿Eliminar colaborador?'))return;D.colaboradores=D.colaboradores.filter(c=>c.id!==id);sd();sbDelUser(id);renderColabs();}
+function archivarColab(id){
+  const c=D.colaboradores.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`¿Dar de baja a ${c.nombre}?\n\nYa no aparecerá para asignar trabajos ni podrá iniciar sesión, pero se conservará todo su historial de trabajos y tareas.`))return;
+  c.activo=false;sd();sbArchivarUser(id);renderColabs();
+  toast(`📦 ${c.nombre} fue dado de baja. Su historial se conserva.`);
+}
+function reactivarColab(id){
+  const c=D.colaboradores.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`¿Reactivar a ${c.nombre}? Volverá a aparecer para asignar trabajos y podrá iniciar sesión.`))return;
+  c.activo=true;sd();sbReactivarUser(id);renderColabs();
+  toast(`↩️ ${c.nombre} fue reactivado.`);
+}
+function eliminarDefinitivo(id){
+  const c=D.colaboradores.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`⚠️ ATENCIÓN: Vas a eliminar DEFINITIVAMENTE a ${c.nombre}.\n\nEsto borrará al colaborador y TODO su historial de trabajos, tareas y coberturas. Esta acción NO se puede deshacer.\n\n¿Continuar?`))return;
+  if(!confirm(`Confirmá una vez más: ¿eliminar para siempre a ${c.nombre} y todo su registro?`))return;
+  D.colaboradores=D.colaboradores.filter(x=>x.id!==id);sd();sbDelUser(id);renderColabs();
+  toast(`🗑 ${c.nombre} fue eliminado definitivamente.`);
+}
 function saveAdminPin(){const p=document.getElementById('adminPinInp').value;if(!/^\d{4}$/.test(p)){alert('El PIN debe ser exactamente 4 dígitos numéricos.');return;}D.adminPin=p;sd();sbSaveAdminPin(p);document.getElementById('adminPinShow').textContent=p;toast('✓ PIN de admin actualizado');}
 
 /* ═══ PORTAL CLIENTE ═══ */
