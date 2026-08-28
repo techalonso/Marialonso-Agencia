@@ -545,6 +545,12 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
       <label>Hora (opcional)</label>
       <input id="ef_hora" type="time">
     </div>
+    <div class="field" id="ef_repite_wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;">
+        <input type="checkbox" id="ef_repite" style="width:16px;height:16px;cursor:pointer;">
+        🔁 Repetir todos los años (ej: Navidad, aniversarios)
+      </label>
+    </div>
     <div class="field" id="ef_color_wrap"><label>Color</label>
       <div class="c-picker">
         <div class="cdot sel" style="background:#c7d2f0;" data-ci="0" onclick="selEC(0)"></div>
@@ -788,7 +794,7 @@ async function loadFromSupabase(){
     D.efemerides={};
     (calData||[]).forEach(item=>{
       if(!D.efemerides[item.fecha])D.efemerides[item.fecha]=[];
-      D.efemerides[item.fecha].push({id:item.id,text:item.titulo,color:item.color_idx||0,tipo:item.tipo||'efemeride',hora:item.hora});
+      D.efemerides[item.fecha].push({id:item.id,text:item.titulo,color:item.color_idx||0,tipo:item.tipo||'efemeride',hora:item.hora,anual:item.anual||false});
     });
 
     const pinCfg=(cfgData||[]).find(c=>c.clave==='admin_pin');
@@ -869,7 +875,7 @@ function sbDelTask(id){sbDel('tasks',id);}
 
 async function sbSaveCalendarItem(dateStr,item){
   if(!sbc)return;
-  const{data}=await sbc.from('calendar_items').insert({fecha:dateStr,tipo:item.tipo||'efemeride',titulo:item.text,hora:item.hora||null,color_idx:item.color||0}).select().single();
+  const{data}=await sbc.from('calendar_items').insert({fecha:dateStr,tipo:item.tipo||'efemeride',titulo:item.text,hora:item.hora||null,color_idx:item.color||0,anual:item.anual||false}).select().single();
   if(data)item.id=data.id;
 }
 function sbDelCalendarItem(itemId){sbDel('calendar_items',itemId);}
@@ -1083,6 +1089,26 @@ function updAgTab(){const lbl=`🗓 Agenda · ${MES[pM]}`;document.querySelector
 /* ═══ AGENDA ═══ */
 function shiftP(d){pM+=d;if(pM>11){pM=0;pY++;}if(pM<0){pM=11;pY--;}renderAgenda();}
 function pHoy(){pY=new Date().getFullYear();pM=new Date().getMonth();renderAgenda();}
+function efemeridesDelDia(ds){
+  // ds formato YYYY-MM-DD
+  const mmdd=ds.slice(5); // MM-DD
+  const propias=(D.efemerides[ds]||[]).map((ef,i)=>({...ef,_origen:ds,_idx:i}));
+  const resultado=[...propias];
+  // Buscar efemérides ANUALES de otras fechas con el mismo mes-día
+  Object.keys(D.efemerides).forEach(fecha=>{
+    if(fecha===ds)return; // ya incluidas
+    if(fecha.slice(5)!==mmdd)return; // distinto mes-día
+    (D.efemerides[fecha]||[]).forEach((ef,i)=>{
+      if(ef.anual){
+        // Evitar duplicar si ya hay una igual este día
+        if(!resultado.some(r=>r.text===ef.text&&r.tipo===ef.tipo)){
+          resultado.push({...ef,_origen:fecha,_idx:i,_esReplica:true});
+        }
+      }
+    });
+  });
+  return resultado;
+}
 function renderAgenda(){
   document.getElementById('agLbl').textContent=`${MES[pM]} ${pY}`;
   updAgTab();
@@ -1103,13 +1129,14 @@ function renderAgenda(){
       cell.className='p-cell'+(inM?'':' other')+(isT?' tc':'')+(isWe?' we-c':'')+(inM&&ST.role==='admin'?' click':'');
       const dn=document.createElement('div');dn.className='pdn';dn.textContent=cur.getDate();
       cell.appendChild(dn);
-      (D.efemerides[ds]||[]).forEach((ef,idx)=>{
+      efemeridesDelDia(ds).forEach((ef,idx)=>{
         const tipo=ef.tipo||'efemeride';
         const iconos={efemeride:'',evento:'🎯 ',reunion:'👥 '};
         const clsExtra=tipo==='evento'?' ef-evento':tipo==='reunion'?' ef-reunion':'';
         const el=document.createElement('div');el.className=`ef ef${ef.color}${clsExtra}`;
         let inner=`<div class="ef-dot"></div><span style="flex:1;">${iconos[tipo]}${esc(ef.text)}${ef.hora?` · ${ef.hora}`:''}</span>`;
-        if(ST.role==='admin')inner+=`<span class="ef-del" onclick="delEf('${ds}',${idx},event)">✕</span>`;
+        if(ST.role==='admin'&&!ef._esReplica)inner+=`<span class="ef-del" onclick="delEf('${ef._origen}',${ef._idx},event)">✕</span>`;
+        if(ef.anual)inner=inner.replace('flex:1;">','flex:1;">🔁 ');
         el.innerHTML=inner;
         cell.appendChild(el);
       });
@@ -1154,6 +1181,7 @@ function renderAgenda(){
 }
 let curAgType='efemeride';
 function openEfModal(ds){
+  const rp=document.getElementById('ef_repite');if(rp)rp.checked=false;
   efDate=ds;
   const d=new Date(ds+'T00:00:00');
   document.getElementById('efTitle').textContent=d.toLocaleDateString('es-PY',{weekday:'long',day:'numeric',month:'long'});
@@ -1178,7 +1206,8 @@ function saveEf(){
   const hora=document.getElementById('ef_hora').value;
   // Color por defecto según tipo
   const defColor={efemeride:efCI,evento:3,reunion:4};
-  const item={text:tx,color:curAgType==='efemeride'?efCI:defColor[curAgType],tipo:curAgType,hora:hora||null};
+  const anual=document.getElementById('ef_repite').checked&&curAgType==='efemeride';
+  const item={text:tx,color:curAgType==='efemeride'?efCI:defColor[curAgType],tipo:curAgType,hora:hora||null,anual};
   D.efemerides[efDate].push(item);
   sbSaveCalendarItem(efDate,item);
   sd();closeM('efBg');renderAgenda();
@@ -1203,7 +1232,7 @@ function renderSemana(){
     // Tareas cuya FECHA DE ENTREGA cae este día (y es distinta al día agendado)
     const tareasEntrega=D.tareas.filter(t=>t.fechaEntrega===ds&&t.fecha!==ds);
     const cobDia=D.coberturas.filter(cv=>cv.fecha===ds);
-    const efDia=D.efemerides[ds]||[];
+    const efDia=efemeridesDelDia(ds);
     const chipsHtml=efDia.map(ef=>mkEfChip(ef)).join('')+cobDia.map(cv=>mkCobChip(cv)).join('')+tt.map(t=>mkChip(t)).join('')+tareasEntrega.map(t=>mkTaskDeadlineChip(t)).join('')+pendDia.map(p=>mkPendChip(p)).join('');
     col.innerHTML=`<div class="day-head"><span class="day-dow">${dow}</span><span class="day-num">${d.getDate()}</span></div>`+(chipsHtml||'<div class="empty-day">—</div>');
     grid.appendChild(col);
