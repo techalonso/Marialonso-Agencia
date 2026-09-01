@@ -1342,9 +1342,31 @@ function renderPend(){
     // Orden: Urgente → Alto → Medio → Bajo
     const pp=D.pendientes.filter(p=>p.clienteId===cl.id).sort((a,b)=>prioOrd(a.prioridad)-prioOrd(b.prioridad));
     const act=pp.filter(p=>p.estado!=="finalizado").length;
+    const tareasAct=D.tareas.filter(t=>t.estado!=="completado"&&(t.cliente===cl.nombre||t.clienteId===cl.id)).length;
     const color=cl.color||"#e5ddd0",emoji=cl.emoji?cl.emoji+" ":"";
-    return`<div class="client-block" data-clid="${cl.id}" style="border-top-color:${color}"><div class="cbh"><div><div class="cn">${emoji}${esc(cl.nombre)}</div><div class="cmeta">${pp.length} pendiente${pp.length!==1?'s':''} · ${act} activo${act!==1?'s':''}</div></div><div class="row"><button class="btn btn-ghost btn-sm" onclick="cpLink('${cl.id}')">🔗 Link</button>${ST.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="openEditClientModal('${cl.id}')">✏️ Editar</button><button class="btn btn-yellow btn-sm" onclick="previewClient('${cl.id}')">👁 Ver panel</button><button class="btn btn-yellow btn-sm" onclick="openPendModal('${cl.id}')">+ Pendiente</button>`:''}</div>${ST.role==='admin'?`<button class="del-client-x" onclick="askDelClient('${cl.id}')" title="Eliminar">✕</button>`:''}</div><div class="pend-items">${pp.map((p,i)=>piHTML(p,i+1)).join('')}${!pp.length?'<div style="padding:12px 0;color:#ccc;font-weight:700;font-size:12px;">Sin pendientes.</div>':''}</div></div>`;
+    return`<div class="client-block" data-clid="${cl.id}" style="border-top-color:${color}"><div class="cbh"><div><div class="cn">${emoji}${esc(cl.nombre)}</div><div class="cmeta">${pp.length} pendiente${pp.length!==1?'s':''} · ${act} activo${act!==1?'s':''}${tareasAct?` · ${tareasAct} tarea${tareasAct!==1?'s':''} en curso`:''}</div></div><div class="row"><button class="btn btn-ghost btn-sm" onclick="cpLink('${cl.id}')">🔗 Link</button>${ST.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="openEditClientModal('${cl.id}')">✏️ Editar</button><button class="btn btn-yellow btn-sm" onclick="previewClient('${cl.id}')">👁 Ver panel</button><button class="btn btn-yellow btn-sm" onclick="openPendModal('${cl.id}')">+ Pendiente</button>`:''}</div>${ST.role==='admin'?`<button class="del-client-x" onclick="askDelClient('${cl.id}')" title="Eliminar">✕</button>`:''}</div><div class="pend-items">${pp.map((p,i)=>piHTML(p,i+1)).join('')}${!pp.length?'<div style="padding:12px 0;color:#ccc;font-weight:700;font-size:12px;">Sin pendientes.</div>':''}</div>${tareasClienteHTML(cl)}</div>`;
   }).join('');
+}
+function tareasClienteHTML(cl){
+  // Tareas NO completadas de este cliente (por nombre o por id)
+  const tareas=D.tareas.filter(t=>{
+    if(t.estado==='completado')return false;
+    return t.cliente===cl.nombre||t.clienteId===cl.id;
+  }).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  if(!tareas.length)return '';
+  const filas=tareas.map(t=>{
+    const cargo=(t.colaboradores||[]).map(id=>nombreColab(id)).filter(x=>x!=='—').join(', ');
+    const estadoTxt={pendiente:'Pendiente',proceso:'En proceso',completado:'Completado'}[t.estado]||t.estado;
+    const entrega=t.fechaEntrega?` · ⏰ Entrega ${t.fechaEntrega.slice(8)}/${t.fechaEntrega.slice(5,7)}`:'';
+    return`<div class="pi" style="border-left:3px solid var(--azul);background:#f5f9ff;">
+      <div class="pi-top"><div class="pi-body">
+        <div class="pi-title" style="font-size:13px;">📋 ${esc(t.titulo)}</div>
+        <div class="pi-badges"><span class="st st-${t.estado==='proceso'?'proceso':'pausa'}">${estadoTxt}</span></div>
+        <div style="font-size:10.5px;color:var(--gris2);font-weight:700;margin-top:4px;">📅 ${t.fecha?t.fecha.slice(8)+'/'+t.fecha.slice(5,7):'—'} · ${t.horaInicio||''}–${t.horaFin||''}${entrega}${cargo?' · 👤 '+esc(cargo):''}</div>
+      </div>${ST.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="openTaskModal('${t.id}')">Editar</button>`:''}</div>
+    </div>`;
+  }).join('');
+  return`<div class="tareas-cliente" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--borde);"><div style="font-size:11px;font-weight:800;color:var(--gris2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">📋 Tareas en curso (${tareas.length})</div>${filas}</div>`;
 }
 function piHTML(p,num){
   const comms=p.comentarios||[];
