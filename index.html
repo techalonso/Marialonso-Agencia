@@ -96,6 +96,7 @@ label{font-size:11px;font-weight:800;color:var(--gris);display:block;margin-bott
 /* ── ESTADO / PRIORIDAD ── */
 .st{display:inline-flex;align-items:center;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap;}
 .st-urgente{background:#fde9e7;color:#b02020;}
+.st-pendiente{background:#eceae2;color:#6b6a63;}
 .st-proceso{background:#e8edfa;color:#2a4a9a;}
 .st-pausa{background:#fef3e2;color:#8a4800;}
 .st-enviado{background:#e8f5ee;color:#155c30;}
@@ -668,11 +669,13 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
     <h2 id="pendTitle">Nuevo pendiente</h2>
     <input type="hidden" id="pm_id">
     <div class="field"><label>Cliente</label><select id="pm_cli"></select></div>
+    <div class="field"><label>Título</label><input id="pm_titulo" placeholder="Ej: Diseño de posteo para Instagram"></div>
     <div class="field"><label>Descripción</label><textarea id="pm_desc" rows="4" placeholder="Ej: Diseño de posteo:&#10;- Formato cuadrado&#10;- Colores de marca&#10;- Con logo" style="resize:vertical;line-height:1.6;"></textarea></div>
     <div class="field"><label>Fecha de entrega <span style="font-weight:500;color:var(--gris2);font-size:10px;text-transform:none;letter-spacing:0;">(aparece en Semana y Agenda)</span></label><input id="pm_fecha" type="date"></div>
     <div class="field"><label>Estado</label>
       <div class="pill-sel" id="pm_est">
-        <div class="pill on" data-v="proceso" onclick="selP('pm_est','proceso')">En proceso</div>
+        <div class="pill on" data-v="pendiente" onclick="selP('pm_est','pendiente')">Pendiente</div>
+        <div class="pill" data-v="proceso" onclick="selP('pm_est','proceso')">En proceso</div>
         <div class="pill" data-v="urgente" onclick="selP('pm_est','urgente')">Urgente</div>
         <div class="pill" data-v="pausa" onclick="selP('pm_est','pausa')">En pausa</div>
         <div class="pill" data-v="enviado" onclick="selP('pm_est','enviado')">Enviado</div>
@@ -1142,7 +1145,7 @@ function cH(f,hi,hf){
   return{total:r1(tot),extra:r1(Math.max(0,tot-ov))};
 }
 function getClis(){return[...new Set(D.tareas.map(t=>t.cliente).filter(Boolean))].sort();}
-function stTag(s){const m={urgente:'st-urgente Urgente',proceso:'st-proceso En proceso',pausa:'st-pausa En pausa',enviado:'st-enviado Enviado',finalizado:'st-finalizado Finalizado'};const parts=(m[s]||'st-proceso En proceso').split(' ');return`<span class="st ${parts[0]}">${parts.slice(1).join(' ')}</span>`;}
+function stTag(s){const m={pendiente:'st-pendiente Pendiente',urgente:'st-urgente Urgente',proceso:'st-proceso En proceso',pausa:'st-pausa En pausa',enviado:'st-enviado Enviado',finalizado:'st-finalizado Finalizado'};const parts=(m[s]||'st-pendiente Pendiente').split(' ');return`<span class="st ${parts[0]}">${parts.slice(1).join(' ')}</span>`;}
 function prTag(p){const lbl={urgente:'Urgente',alto:'Alto',medio:'Medio',bajo:'Bajo'};return`<span class="pr pr-${p}">${lbl[p]||p}</span>`;}
 let _toastTimer=null;
 function toast(msg){
@@ -1351,7 +1354,7 @@ function renderCWk(){
     return`<div class="colab-card"><div class="cc-name">${esc(col.nombre)}</div><div class="cc-stats">${totalItems} asignaci${totalItems!==1?'ones':'ón'}${h>0?` · ${r1(h)}h`:''}${ex>0?` · <span style="color:var(--rojo)">${r1(ex)}h extra</span>`:''}</div>${bodyHtml}</div>`;
   }).join('');
 }
-function estadoLabel(e){return{urgente:'Urgente',proceso:'En proceso',pausa:'En pausa',enviado:'Enviado',finalizado:'Finalizado'}[e]||e;}
+function estadoLabel(e){return{pendiente:'Pendiente',urgente:'Urgente',proceso:'En proceso',pausa:'En pausa',enviado:'Enviado',finalizado:'Finalizado'}[e]||e;}
 function openTaskModal(id){
   if(ST.role!=='admin')return;
   eTId=id||null;
@@ -1519,7 +1522,11 @@ function openPendModal(cid,pid){
   document.getElementById('pm_id').value=pid||'';
   document.getElementById('pmDel').style.display=p?'inline-flex':'none';
   document.getElementById('pm_cli').innerHTML=D.clientes.map(c=>`<option value="${c.id}"${(cid&&c.id===cid)||(p&&c.id===p.clienteId)?' selected':''}>${esc(c.nombre)}</option>`).join('');
-  document.getElementById('pm_desc').value=p?.desc||'';
+  // Separar título (1ra línea) y descripción (resto)
+  const descCompleto=p?.desc||'';
+  const lineas=descCompleto.split('\n');
+  document.getElementById('pm_titulo').value=lineas[0]||'';
+  document.getElementById('pm_desc').value=lineas.slice(1).join('\n');
   document.getElementById('pm_obs').value=p?.obs||'';
   document.getElementById('pm_fecha').value=p?.fechaEntrega||'';
   // Colaboradores a cargo
@@ -1533,15 +1540,18 @@ function openPendModal(cid,pid){
   const links=p?.links||[];
   if(links.length)links.forEach(l=>addLinkField(l.label,l.url));
   else addLinkField(); // un campo vacío por defecto
-  selP('pm_est',p?.estado||'proceso');selP('pm_pri',p?.prioridad||'medio');
+  selP('pm_est',p?.estado||'pendiente');selP('pm_pri',p?.prioridad||'medio');
   document.getElementById('pendBg').classList.add('open');
 }
 function savePend(){
-  const desc=document.getElementById('pm_desc').value.trim();if(!desc){alert('Escribí la descripción.');return;}
+  const titulo=document.getElementById('pm_titulo').value.trim();if(!titulo){alert('Escribí el título del trabajo.');return;}
+  const descripcion=document.getElementById('pm_desc').value.trim();
+  // El título va como primera línea; la descripción debajo (compatible con el resto del sistema)
+  const desc=descripcion?titulo+'\n'+descripcion:titulo;
   const pid=document.getElementById('pm_id').value;
   const existing=pid?D.pendientes.find(x=>x.id===pid):null;
   const colsAsignados=[...document.querySelectorAll('#pm_cols .chip.on')].map(ch=>ch.dataset.id);
-  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'proceso',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date())};
+  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'pendiente',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date())};
   if(pid)D.pendientes=D.pendientes.map(p=>p.id===pid?obj:p);else D.pendientes.push(obj);
   sd();sbSaveJob(obj);closeM('pendBg');refrescarTodo();
 }
@@ -1768,7 +1778,7 @@ function renderPortalClient(clienteId){
   if(!cl){document.getElementById('portalClientName').textContent='Cliente';return;}
   document.getElementById('portalClientName').textContent=cl.nombre;
   // Ordenar: activos primero (por avance), finalizados al final
-  const orderEstado={proceso:0,urgente:0,pausa:1,enviado:2,finalizado:3};
+  const orderEstado={pendiente:0,proceso:0,urgente:0,pausa:1,enviado:2,finalizado:3};
   const pp=D.pendientes.filter(p=>p.clienteId===clienteId).sort((a,b)=>(orderEstado[a.estado]??1)-(orderEstado[b.estado]??1));
   const body=document.getElementById('portalClientBody');
   // Pasos del avance que ve el cliente (sin "urgente" ni prioridad interna)
