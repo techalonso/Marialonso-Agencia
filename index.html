@@ -492,32 +492,11 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
         </div>
       </div>
       <div id="portalClientBody"></div>
-      <div class="portal-new-work" id="portalNewWork" style="display:none;">
-        <h2>¿Necesitás algo nuevo?</h2>
-        <div class="field"><label>Descripción</label><textarea id="pnw_desc" rows="3" placeholder="Contanos qué necesitás…&#10;Ej: Diseño de posteo:&#10;- Formato cuadrado&#10;- Colores de marca" style="resize:vertical;line-height:1.6;white-space:pre-line;"></textarea></div>
-        <div class="field"><label>Prioridad</label>
-          <div class="pill-sel" id="pnw_pri">
-            <div class="pill on" data-v="bajo" onclick="selP('pnw_pri','bajo')">Bajo</div>
-            <div class="pill" data-v="medio" onclick="selP('pnw_pri','medio')">Medio</div>
-            <div class="pill" data-v="alto" onclick="selP('pnw_pri','alto')">Alto</div>
-            <div class="pill" data-v="urgente" onclick="selP('pnw_pri','urgente')">Urgente</div>
-          </div>
-        </div>
-        <div class="field"><label>Observación (opcional)</label><textarea id="pnw_obs" rows="2" placeholder="Cualquier detalle, referencia o aclaración…"></textarea></div>
-        <div class="field">
-          <label>Links / Archivos de referencia</label>
-          <div style="font-size:11.5px;color:var(--gris2);margin-bottom:8px;font-weight:500;">Podés agregar links de Drive, WeTransfer, Dropbox, o cualquier URL con el material de referencia.</div>
-          <div id="pnw_links_wrap"></div>
-          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="addPnwLink()">+ Agregar link</button>
-        </div>
-        <div class="field">
-          <label>¿Tenés un archivo para subir? <span style="font-weight:500;color:var(--gris2);font-size:10px;text-transform:none;letter-spacing:0;">(próximamente con Supabase)</span></label>
-          <div style="border:2px dashed var(--borde);border-radius:10px;padding:16px;text-align:center;background:var(--crema3);">
-            <div style="font-size:13px;color:var(--gris2);margin-bottom:6px;">📎 Upload de archivos disponible pronto</div>
-            <div style="font-size:11.5px;color:var(--gris2);">Por ahora podés compartir el archivo via Drive, WeTransfer o Dropbox y pegar el link arriba.</div>
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="submitNewWork()">Enviar solicitud</button>
+      <!-- Botón flotante del portal cliente -->
+      <div class="fab" id="portalFab" style="display:none;">
+        <button class="fab-btn" onclick="openPortalNewWork()">
+          <span class="fab-icon">＋</span> Solicitar trabajo
+        </button>
       </div>
     </section>
 
@@ -574,6 +553,39 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
 </div>
 
 <!-- MODAL TAREA -->
+<div class="modal-bg" id="portalNewWork">
+       <div class="modal" style="max-width:480px;max-height:88vh;overflow-y:auto;">
+        <div class="row between" style="align-items:center;margin-bottom:4px;">
+          <h2 style="margin:0;">¿Necesitás algo nuevo?</h2>
+          <button class="btn btn-ghost btn-sm" onclick="closeM('portalNewWork')">✕</button>
+        </div>
+        <div class="field"><label>Descripción</label><textarea id="pnw_desc" rows="3" placeholder="Contanos qué necesitás…&#10;Ej: Diseño de posteo:&#10;- Formato cuadrado&#10;- Colores de marca" style="resize:vertical;line-height:1.6;white-space:pre-line;"></textarea></div>
+        <div class="field"><label>Prioridad</label>
+          <div class="pill-sel" id="pnw_pri">
+            <div class="pill on" data-v="bajo" onclick="selP('pnw_pri','bajo')">Bajo</div>
+            <div class="pill" data-v="medio" onclick="selP('pnw_pri','medio')">Medio</div>
+            <div class="pill" data-v="alto" onclick="selP('pnw_pri','alto')">Alto</div>
+            <div class="pill" data-v="urgente" onclick="selP('pnw_pri','urgente')">Urgente</div>
+          </div>
+        </div>
+        <div class="field"><label>Observación (opcional)</label><textarea id="pnw_obs" rows="2" placeholder="Cualquier detalle, referencia o aclaración…"></textarea></div>
+        <div class="field">
+          <label>Links / Archivos de referencia</label>
+          <div style="font-size:11.5px;color:var(--gris2);margin-bottom:8px;font-weight:500;">Podés agregar links de Drive, WeTransfer, Dropbox, o cualquier URL con el material de referencia.</div>
+          <div id="pnw_links_wrap"></div>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px;" onclick="addPnwLink()">+ Agregar link</button>
+        </div>
+        <div class="field">
+          <label>¿Tenés un archivo para subir? <span style="font-weight:500;color:var(--gris2);font-size:10px;text-transform:none;letter-spacing:0;">(próximamente con Supabase)</span></label>
+          <div style="border:2px dashed var(--borde);border-radius:10px;padding:16px;text-align:center;background:var(--crema3);">
+            <div style="font-size:13px;color:var(--gris2);margin-bottom:6px;">📎 Upload de archivos disponible pronto</div>
+            <div style="font-size:11.5px;color:var(--gris2);">Por ahora podés compartir el archivo via Drive, WeTransfer o Dropbox y pegar el link arriba.</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;" onclick="submitNewWork()">Enviar solicitud</button>
+       </div>
+      </div>
+
 <div class="modal-bg" id="taskBg">
   <div class="modal">
     <h2 id="taskTitle">Nueva tarea</h2>
@@ -1750,7 +1762,6 @@ function renderPortalClient(clienteId){
           <div class="portal-pi-title">${esc(titulo)}</div>
           ${detalle?`<div class="portal-pi-obs" style="white-space:pre-line;">${esc(detalle)}</div>`:''}
           ${p.obs?`<div class="portal-pi-obs">${esc(p.obs)}</div>`:''}
-          ${progresoHTML(p.estado)}
           ${linksHtml?`<div class="cli-preview-box"><div class="cli-preview-title">Vista previa del trabajo</div>${linksHtml}</div>`:''}
         </div>
       </div>
@@ -1764,7 +1775,15 @@ function renderPortalClient(clienteId){
       </div>
     </div>`;
   }).join(''):'<div class="empty-portal">No hay pendientes activos por el momento.<br><span style="font-weight:400;font-size:13px;">¡Pronto habrá novedades!</span></div>';
-  document.getElementById('portalNewWork').style.display='block';
+  const pf=document.getElementById('portalFab');if(pf)pf.style.display='flex';
+}
+function openPortalNewWork(){
+  // Limpiar el formulario y abrir el modal
+  document.getElementById('pnw_desc').value='';
+  document.getElementById('pnw_obs').value='';
+  document.getElementById('pnw_links_wrap').innerHTML='';
+  selP('pnw_pri','bajo');
+  document.getElementById('portalNewWork').classList.add('open');
 }
 function sendPortalComm(pid){
   const inp=document.getElementById('pcomm_'+pid);
@@ -1797,6 +1816,7 @@ function submitNewWork(){
   document.getElementById('pnw_obs').value='';
   document.getElementById('pnw_links_wrap').innerHTML='';
   selP('pnw_pri','bajo');
+  closeM('portalNewWork');
   toast('✓ Solicitud enviada al equipo de María Alonso');
   renderPortalClient(_portalClientId);
 }
