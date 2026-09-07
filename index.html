@@ -45,6 +45,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .brand-sub{font-size:10px;opacity:.42;letter-spacing:2.5px;text-transform:uppercase;font-weight:600;}
 .hdr-r{display:flex;align-items:center;gap:9px;}
 .user-badge{background:var(--amarillo);color:var(--negro);font-weight:800;font-size:11.5px;padding:5px 13px;border-radius:30px;}
+.btn-back{border:1.5px solid rgba(255,255,255,.18);background:transparent;color:rgba(255,255,255,.75);font-family:var(--font);font-weight:700;font-size:12px;padding:5px 12px;border-radius:30px;cursor:pointer;transition:.13s;margin-right:2px;}
+.btn-back:hover{border-color:rgba(255,255,255,.5);color:#fff;background:rgba(255,255,255,.08);}
 .btn-logout{border:1.5px solid rgba(255,255,255,.18);background:transparent;color:rgba(255,255,255,.65);font-family:var(--font);font-weight:700;font-size:12px;padding:5px 12px;border-radius:30px;cursor:pointer;transition:.13s;}
 .btn-logout:hover{border-color:rgba(255,255,255,.5);color:#fff;}
 
@@ -349,6 +351,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
       <div><div class="brand-name">María Alonso</div><div class="brand-sub">Agencia Boutique</div></div>
     </div>
     <div class="hdr-r">
+      <button class="btn-back" id="btnBack" onclick="goBack()" style="display:none;" title="Volver a la sección anterior">← Atrás</button>
       <span class="user-badge" id="userBadge"></span>
       <button class="btn-logout" onclick="logout()">Salir</button>
     </div>
@@ -1023,6 +1026,7 @@ document.addEventListener('keydown',e=>{
 });
 function doLogin(role,cid){
   ST={role,cid};
+  _navHist=[];_vistaActual=null;
   // Guardar sesión para que persista al refrescar
   try{localStorage.setItem('ma_session',JSON.stringify({role,cid}));}catch(e){}
   document.getElementById('loginScreen').style.display='none';
@@ -1045,10 +1049,14 @@ function doLogin(role,cid){
   nav.querySelector('[data-view="agenda"]').classList.add('active');
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-agenda').classList.add('active');
+  _vistaActual='agenda';_navHist=[];
+  const bb=document.getElementById('btnBack');if(bb)bb.style.display='none';
   renderAgenda();
 }
 function logout(){
   try{localStorage.removeItem('ma_session');}catch(e){}
+  _navHist=[];_vistaActual=null;
+  const bb=document.getElementById('btnBack');if(bb)bb.style.display='none';
   ST={role:null,cid:null};pb='';updDots();
   document.getElementById('pinErr').textContent='';
   document.getElementById('loginScreen').style.display='flex';
@@ -1066,7 +1074,15 @@ function logout(){
     });
   });
 });
-function swV(v){
+let _navHist=[];
+let _vistaActual=null;
+function swV(v,esVuelta){
+  // Registrar la vista actual en el historial (salvo cuando es una vuelta atrás)
+  if(!esVuelta&&_vistaActual&&_vistaActual!==v){
+    _navHist.push(_vistaActual);
+    if(_navHist.length>20)_navHist.shift(); // límite de historial
+  }
+  _vistaActual=v;
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   if(v==='agenda')renderAgenda();
@@ -1075,6 +1091,25 @@ function swV(v){
   else if(v==='reportes')renderRpt();
   else if(v==='coberturas')renderCob();
   else if(v==='colaboradores')renderColabs();
+  actualizarBotonAtras();
+}
+function actualizarBotonAtras(){
+  const btn=document.getElementById('btnBack');
+  if(!btn)return;
+  btn.style.display=_navHist.length>0?'inline-flex':'none';
+}
+function goBack(){
+  if(!_navHist.length)return;
+  const anterior=_navHist.pop();
+  // Marcar el tab correcto como activo
+  const navId=ST.role==='admin'?'adminNav':'colabNav';
+  const nav=document.getElementById(navId);
+  if(nav){
+    nav.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+    const btnTab=nav.querySelector(`[data-view="${anterior}"]`);
+    if(btnTab)btnTab.classList.add('active');
+  }
+  swV(anterior,true); // true = es una vuelta, no registrar en historial
 }
 
 /* ═══ HELPERS ═══ */
