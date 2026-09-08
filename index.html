@@ -435,8 +435,20 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
     <!-- REPORTES -->
     <section class="view" id="view-reportes">
       <h1>Control</h1><div class="subt">Proyectos y horas por cliente</div>
-      <div class="row" style="margin-bottom:16px;">
-        <select id="rptSel" onchange="renderReporte()" style="width:auto;"></select>
+      <div class="row" style="margin-bottom:16px;gap:14px;align-items:end;">
+        <div class="field" style="margin-bottom:0;min-width:190px;">
+          <label>Cliente</label>
+          <select id="rptSel" onchange="renderReporte()" style="width:auto;"></select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Desde</label>
+          <input type="date" id="rptDesde" onchange="renderReporte()" style="width:auto;">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>Hasta</label>
+          <input type="date" id="rptHasta" onchange="renderReporte()" style="width:auto;">
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="limpiarPeriodoRpt()">✕ Limpiar período</button>
       </div>
       <div id="rptBody"></div>
     </section>
@@ -1588,10 +1600,20 @@ function renderReporte(){
   // Cliente puede venir por nombre (tareas) o por id (pendientes)
   const cliObj=D.clientes.find(x=>x.nombre===cli);
   const cliId=cliObj?.id;
-  // Tareas de este cliente
-  const tt=D.tareas.filter(t=>t.cliente===cli);
-  // Trabajos/pendientes de este cliente
-  const pp=D.pendientes.filter(p=>p.clienteId===cliId);
+  // Período seleccionado (opcional)
+  const desde=document.getElementById('rptDesde')?.value||'';
+  const hasta=document.getElementById('rptHasta')?.value||'';
+  const enPeriodo=f=>{
+    if(!desde&&!hasta)return true;
+    if(!f)return false;
+    if(desde&&f<desde)return false;
+    if(hasta&&f>hasta)return false;
+    return true;
+  };
+  // Tareas de este cliente (filtradas por período si corresponde)
+  const tt=D.tareas.filter(t=>t.cliente===cli&&enPeriodo(t.fechaEntrega||t.fecha));
+  // Trabajos/pendientes de este cliente (filtrados por período si corresponde)
+  const pp=D.pendientes.filter(p=>p.clienteId===cliId&&enPeriodo(p.fechaEntrega||p.fecha));
   let h=0;tt.forEach(t=>{h+=cH(t.fecha,t.horaInicio,t.horaFin).total;});
 
   // Unificar en un historial: cada item con {fecha, titulo, tipoLabel, estado, editor}
@@ -1619,7 +1641,13 @@ function renderReporte(){
   const totalProyNuevos=tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='nuevo').length;
   const totalCambios=tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='cambio').length;
 
-  body.innerHTML=`<div class="stat-row"><div class="stat dark"><div class="num">${totalProyNuevos}</div><div class="slbl">Proyectos nuevos</div></div><div class="stat"><div class="num">${totalCambios}</div><div class="slbl">Cambios</div></div><div class="stat"><div class="num">${items.length}</div><div class="slbl">Trabajos totales</div></div><div class="stat acc"><div class="num">${r1(h)}h</div><div class="slbl">Horas invertidas</div></div></div><div class="card"><h2>Historial — ${esc(cli)}</h2><table><thead><tr><th>Fecha</th><th>Título</th><th>Tipo</th><th>Estado</th><th>Última modificación</th><th>Cambios realizados</th><th>Encargado / Editado</th></tr></thead><tbody>${items.length?items.map(it=>`<tr><td>${it.fecha||'—'}</td><td>${esc(it.titulo)}</td><td>${it.tipoLabel}</td><td><span class="st st-${it.estado}">${esc(estadoLabel(it.estado))}</span></td><td>${it.ultimaMod||'—'}</td><td style="text-align:center;">${it.cambios}</td><td>👤 ${esc(it.editor)}</td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">Sin trabajos registrados para este cliente.</td></tr>'}</tbody></table></div>`;
+  const periodoLbl=desde||hasta?` <span style="font-size:12px;font-weight:600;color:var(--gris2);">(${desde||'…'} a ${hasta||'…'})</span>`:'';
+  body.innerHTML=`<div class="stat-row"><div class="stat dark"><div class="num">${totalProyNuevos}</div><div class="slbl">Proyectos nuevos</div></div><div class="stat"><div class="num">${totalCambios}</div><div class="slbl">Cambios</div></div><div class="stat"><div class="num">${items.length}</div><div class="slbl">Trabajos totales</div></div><div class="stat acc"><div class="num">${r1(h)}h</div><div class="slbl">Horas invertidas</div></div></div><div class="card"><h2>Historial — ${esc(cli)}${periodoLbl}</h2><table><thead><tr><th>Fecha</th><th>Título</th><th>Tipo</th><th>Estado</th><th>Última modificación</th><th>Cambios realizados</th><th>Encargado / Editado</th></tr></thead><tbody>${items.length?items.map(it=>`<tr><td>${it.fecha||'—'}</td><td>${esc(it.titulo)}</td><td>${it.tipoLabel}</td><td><span class="st st-${it.estado}">${esc(estadoLabel(it.estado))}</span></td><td>${it.ultimaMod||'—'}</td><td style="text-align:center;">${it.cambios}</td><td>👤 ${esc(it.editor)}</td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">Sin trabajos registrados para este cliente'+(desde||hasta?' en el período seleccionado':'')+'.</td></tr>'}</tbody></table></div>`;
+}
+function limpiarPeriodoRpt(){
+  document.getElementById('rptDesde').value='';
+  document.getElementById('rptHasta').value='';
+  renderReporte();
 }
 
 /* ═══ COBERTURAS ═══ */
