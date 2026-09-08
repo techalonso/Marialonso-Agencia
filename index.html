@@ -362,7 +362,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
     <button data-view="agenda" class="active">🗓 Agenda</button>
     <button data-view="semana">📅 Semana</button>
     <button data-view="pendientes">📌 Pendientes 360</button>
-    <button data-view="reportes">📊 Reportes</button>
+    <button data-view="reportes">📊 Control</button>
     <button data-view="coberturas">🎬 Coberturas</button>
     <button data-view="colaboradores">👥 Colaboradores</button>
   </nav>
@@ -434,7 +434,7 @@ footer{text-align:center;padding:26px;color:#bbb;font-size:11.5px;font-weight:60
 
     <!-- REPORTES -->
     <section class="view" id="view-reportes">
-      <h1>Reportes</h1><div class="subt">Proyectos y horas por cliente</div>
+      <h1>Control</h1><div class="subt">Proyectos y horas por cliente</div>
       <div class="row" style="margin-bottom:16px;">
         <select id="rptSel" onchange="renderReporte()" style="width:auto;"></select>
       </div>
@@ -797,7 +797,7 @@ async function loadFromSupabase(){
       const jobCols=(jobAssData||[]).filter(a=>a.job_id===j.id).map(a=>a.user_id);
       const comms=(commData||[]).filter(c=>c.entity_id===j.id).map(c=>({text:c.body,autor:c.author_name,fecha:fmtSbDate(c.created_at),_sbId:c.id}));
       const desc=j.descripcion?j.titulo+'\n'+j.descripcion:j.titulo;
-      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,origen:j.origen||'agencia',lastEditedBy:j.last_edited_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at)};
+      return{id:j.id,clienteId:j.client_id,desc,estado:j.estado,prioridad:j.prioridad,obs:j.observacion||'',links,comentarios:comms,colaboradores:jobCols,createdBy:j.created_by||null,origen:j.origen||'agencia',lastEditedBy:j.last_edited_by||null,fechaEntrega:j.fecha_entrega||null,fecha:fmtSbDate(j.created_at),cambiosCount:j.edit_count||0,ultimaModificacion:j.last_modified_at||null};
     });
 
     D.colaboradores=(usrData||[]).map(u=>({id:u.id,nombre:u.nombre,pin:u.pin_hash,valorHoraExtra:25000,avatarColor:u.avatar_color,activo:u.is_active!==false}));
@@ -805,7 +805,7 @@ async function loadFromSupabase(){
     D.tareas=(tskData||[]).map(t=>{
       const cols=(tskAss||[]).filter(a=>a.task_id===t.id).map(a=>a.user_id);
       const cli=D.clientes.find(c=>c.id===t.client_id);
-      return{id:t.id,titulo:t.titulo,tipo:t.tipo,categoria:t.categoria,cliente:cli?.nombre||'',clienteId:t.client_id,fecha:t.fecha,fechaEntrega:t.fecha_entrega||null,horaInicio:t.hora_inicio||'09:00',horaFin:t.hora_fin||'10:00',colaboradores:cols,estado:t.estado,notas:t.notas||'',lastEditedBy:t.last_edited_by||null};
+      return{id:t.id,titulo:t.titulo,tipo:t.tipo,categoria:t.categoria,cliente:cli?.nombre||'',clienteId:t.client_id,fecha:t.fecha,fechaEntrega:t.fecha_entrega||null,horaInicio:t.hora_inicio||'09:00',horaFin:t.hora_fin||'10:00',colaboradores:cols,estado:t.estado,notas:t.notas||'',lastEditedBy:t.last_edited_by||null,cambiosCount:t.edit_count||0,ultimaModificacion:t.last_modified_at||null};
     });
 
     D.coberturas=(covData||[]).map(cov=>{
@@ -860,6 +860,8 @@ async function sbSaveJob(job){
   if(job.lastEditedBy)row.last_edited_by=job.lastEditedBy;
   row.origen=job.origen||'agencia';
   row.fecha_entrega=job.fechaEntrega||null;
+  row.edit_count=job.cambiosCount||0;
+  row.last_modified_at=job.ultimaModificacion||null;
   // 1. Guardar el job PRIMERO
   const{error:jobErr}=await sbc.from('jobs').upsert(row);
   if(jobErr){console.error('sbSaveJob error',jobErr);toast('⚠️ Error al guardar: '+jobErr.message);return;}
@@ -886,7 +888,7 @@ async function sbSaveTask(task){
   if(!sbc)return;
   const cli=D.clientes.find(c=>c.nombre===task.cliente||c.nombre.toLowerCase()===(task.cliente||'').toLowerCase());
   // 1. Guardar la tarea PRIMERO y esperar a que exista en la base
-  const{error:taskErr}=await sbc.from('tasks').upsert({id:task.id,client_id:task.clienteId||cli?.id||null,titulo:task.titulo,tipo:task.tipo,categoria:task.categoria,fecha:task.fecha,fecha_entrega:task.fechaEntrega||null,hora_inicio:task.horaInicio,hora_fin:task.horaFin,estado:task.estado,notas:task.notas||null,last_edited_by:task.lastEditedBy||null});
+  const{error:taskErr}=await sbc.from('tasks').upsert({id:task.id,client_id:task.clienteId||cli?.id||null,titulo:task.titulo,tipo:task.tipo,categoria:task.categoria,fecha:task.fecha,fecha_entrega:task.fechaEntrega||null,hora_inicio:task.horaInicio,hora_fin:task.horaFin,estado:task.estado,notas:task.notas||null,last_edited_by:task.lastEditedBy||null,edit_count:task.cambiosCount||0,last_modified_at:task.ultimaModificacion||null});
   if(taskErr){console.error('sbSaveTask error',taskErr);toast('⚠️ Error al guardar tarea: '+taskErr.message);return;}
   // 2. Recién ahora, actualizar las asignaciones de colaboradores
   await sbc.from('task_assignments').delete().eq('task_id',task.id);
@@ -1375,7 +1377,8 @@ function saveTask(){
   const tit=document.getElementById('t_tit').value.trim();if(!tit){alert('Poné un título.');return;}
   const tipo=gP('t_tipo'),cat=tipo==='proyecto'?gP('t_cat'):null;
   const cols=[...document.querySelectorAll('#t_cols .chip.on')].map(c=>c.dataset.id);
-  const task={id:eTId||uid(),titulo:tit,tipo,categoria:cat,cliente:document.getElementById('t_cli').value.trim(),fecha:document.getElementById('t_fec').value,fechaEntrega:document.getElementById('t_fecEntrega').value||null,horaInicio:document.getElementById('t_hi').value,horaFin:document.getElementById('t_hf').value,colaboradores:cols,estado:document.getElementById('t_est').value,notas:document.getElementById('t_not').value.trim(),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid)};
+  const existingT=eTId?D.tareas.find(x=>x.id===eTId):null;
+  const task={id:eTId||uid(),titulo:tit,tipo,categoria:cat,cliente:document.getElementById('t_cli').value.trim(),fecha:document.getElementById('t_fec').value,fechaEntrega:document.getElementById('t_fecEntrega').value||null,horaInicio:document.getElementById('t_hi').value,horaFin:document.getElementById('t_hf').value,colaboradores:cols,estado:document.getElementById('t_est').value,notas:document.getElementById('t_not').value.trim(),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid),cambiosCount:eTId?(existingT?.cambiosCount||0)+1:(existingT?.cambiosCount||0),ultimaModificacion:eTId?fmtD(new Date()):(existingT?.ultimaModificacion||null)};
   if(eTId)D.tareas=D.tareas.map(t=>t.id===eTId?task:t);else D.tareas.push(task);
   sd();sbSaveTask(task);closeM('taskBg');refrescarTodo();
   if(document.getElementById('view-agenda').classList.contains('active'))renderAgenda();
@@ -1551,7 +1554,7 @@ function savePend(){
   const pid=document.getElementById('pm_id').value;
   const existing=pid?D.pendientes.find(x=>x.id===pid):null;
   const colsAsignados=[...document.querySelectorAll('#pm_cols .chip.on')].map(ch=>ch.dataset.id);
-  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'pendiente',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date())};
+  const obj={id:pid||uid(),clienteId:document.getElementById('pm_cli').value,desc,estado:gP('pm_est')||'pendiente',prioridad:gP('pm_pri')||'medio',obs:document.getElementById('pm_obs').value.trim(),links:getLinks(),colaboradores:colsAsignados,comentarios:existing?.comentarios||[],createdBy:existing?.createdBy||(ST.role==='colab'?ST.cid:null),lastEditedBy:(ST.role==='admin'?'__admin__':ST.cid),fechaEntrega:document.getElementById('pm_fecha').value||null,fecha:existing?.fecha||fmtD(new Date()),cambiosCount:pid?(existing?.cambiosCount||0)+1:(existing?.cambiosCount||0),ultimaModificacion:pid?fmtD(new Date()):(existing?.ultimaModificacion||null)};
   if(pid)D.pendientes=D.pendientes.map(p=>p.id===pid?obj:p);else D.pendientes.push(obj);
   sd();sbSaveJob(obj);closeM('pendBg');refrescarTodo();
 }
@@ -1598,6 +1601,8 @@ function renderReporte(){
     titulo:t.titulo,
     tipoLabel:t.tipo==='proyecto'?(t.categoria==='nuevo'?'Proyecto nuevo':'Cambio'):'Tarea',
     estado:t.estado,
+    ultimaMod:t.ultimaModificacion,
+    cambios:t.cambiosCount||0,
     editor:editorNombre(t.lastEditedBy)
   }));
   pp.forEach(p=>items.push({
@@ -1605,6 +1610,8 @@ function renderReporte(){
     titulo:p.desc.split('\n')[0],
     tipoLabel:'Trabajo 360',
     estado:p.estado,
+    ultimaMod:p.ultimaModificacion,
+    cambios:p.cambiosCount||0,
     editor:editorNombre(p.lastEditedBy||p.createdBy)
   }));
   items.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
@@ -1612,7 +1619,7 @@ function renderReporte(){
   const totalProyNuevos=tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='nuevo').length;
   const totalCambios=tt.filter(t=>t.tipo==='proyecto'&&t.categoria==='cambio').length;
 
-  body.innerHTML=`<div class="stat-row"><div class="stat dark"><div class="num">${totalProyNuevos}</div><div class="slbl">Proyectos nuevos</div></div><div class="stat"><div class="num">${totalCambios}</div><div class="slbl">Cambios</div></div><div class="stat"><div class="num">${items.length}</div><div class="slbl">Trabajos totales</div></div><div class="stat acc"><div class="num">${r1(h)}h</div><div class="slbl">Horas invertidas</div></div></div><div class="card"><h2>Historial — ${esc(cli)}</h2><table><thead><tr><th>Fecha</th><th>Título</th><th>Tipo</th><th>Estado</th><th>Encargado / Editado</th></tr></thead><tbody>${items.length?items.map(it=>`<tr><td>${it.fecha||'—'}</td><td>${esc(it.titulo)}</td><td>${it.tipoLabel}</td><td><span class="st st-${it.estado}">${esc(estadoLabel(it.estado))}</span></td><td>👤 ${esc(it.editor)}</td></tr>`).join(''):'<tr><td colspan="5" style="text-align:center;color:#bbb;padding:20px;">Sin trabajos registrados para este cliente.</td></tr>'}</tbody></table></div>`;
+  body.innerHTML=`<div class="stat-row"><div class="stat dark"><div class="num">${totalProyNuevos}</div><div class="slbl">Proyectos nuevos</div></div><div class="stat"><div class="num">${totalCambios}</div><div class="slbl">Cambios</div></div><div class="stat"><div class="num">${items.length}</div><div class="slbl">Trabajos totales</div></div><div class="stat acc"><div class="num">${r1(h)}h</div><div class="slbl">Horas invertidas</div></div></div><div class="card"><h2>Historial — ${esc(cli)}</h2><table><thead><tr><th>Fecha</th><th>Título</th><th>Tipo</th><th>Estado</th><th>Última modificación</th><th>Cambios realizados</th><th>Encargado / Editado</th></tr></thead><tbody>${items.length?items.map(it=>`<tr><td>${it.fecha||'—'}</td><td>${esc(it.titulo)}</td><td>${it.tipoLabel}</td><td><span class="st st-${it.estado}">${esc(estadoLabel(it.estado))}</span></td><td>${it.ultimaMod||'—'}</td><td style="text-align:center;">${it.cambios}</td><td>👤 ${esc(it.editor)}</td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:#bbb;padding:20px;">Sin trabajos registrados para este cliente.</td></tr>'}</tbody></table></div>`;
 }
 
 /* ═══ COBERTURAS ═══ */
